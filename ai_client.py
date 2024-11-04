@@ -1,5 +1,5 @@
 from openai import AsyncOpenAI
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Union
 import httpx
 import logging
 
@@ -45,7 +45,8 @@ class AIClient:
             
         self.client = AsyncOpenAI(**client_params)
         
-    async def get_response_stream(self, prompt: str) -> AsyncGenerator[str, None]:
+    async def get_response_stream(self, prompt: str, stream: bool = True) -> AsyncGenerator[str, None]:
+        """获取AI响应，支持流式和非流式模式"""
         try:
             messages = [{
                 "role": "system",
@@ -59,7 +60,7 @@ class AIClient:
             call_params = {
                 "model": self.model,
                 "messages": messages,
-                "stream": True
+                "stream": stream  # 使用传入的stream参数
             }
             
             if self.api_type == "Azure":
@@ -78,11 +79,27 @@ class AIClient:
             else:  # OpenAI 和其他API
                 response = await self.client.chat.completions.create(**call_params)
             
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            if stream:
+                # 流式模式
+                async for chunk in response:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                print("流式模式结束")
+            else:
+                # 非流式模式，直接返回完整响应
+                # 注意：非流式模式下，response不是异步迭代器，而是直接的响应对象
+                complete_response = response.choices[0].message.content
+                yield complete_response
+                print("非流式模式结束")
                     
         except Exception as e:
             error_msg = f"API调用错误: {str(e)}"
             print(error_msg)  # 在控制台打印错误
-            yield error_msg   # 返回给用户界面
+            yield error_msg
+
+    async def get_response(self, prompt: str) -> str:
+        """获取非流式响应的辅助方法"""
+        response = ""
+        async for chunk in self.get_response_stream(prompt, stream=False):
+            response += chunk
+        return response

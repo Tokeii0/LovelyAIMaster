@@ -62,6 +62,9 @@ class SettingsWindow(QMainWindow):
             self.setCentralWidget(central_widget)
             layout = QVBoxLayout(central_widget)
             
+            # 添加分隔标签
+            layout.addWidget(QLabel("文本AI设置"))
+
             # API设置
             api_layout = QHBoxLayout()
             api_label = QLabel("API Key:")
@@ -140,6 +143,70 @@ class SettingsWindow(QMainWindow):
             hotkey_layout.addWidget(self.hotkey2_edit)
             layout.addLayout(hotkey_layout)
             
+            # 添加划词解释快捷键设置
+            selection_hotkey_layout = QHBoxLayout()
+            selection_hotkey_label = QLabel("划词解释快捷键:")
+            self.selection_hotkey_edit = HotkeyEdit()
+            selection_hotkey_layout.addWidget(selection_hotkey_label)
+            selection_hotkey_layout.addWidget(self.selection_hotkey_edit)
+            layout.addLayout(selection_hotkey_layout)
+
+            # 添加图像AI设置分隔
+            layout.addWidget(QLabel("\n图像AI设置"))
+
+            # 图像API设置
+            image_api_layout = QHBoxLayout()
+            image_api_label = QLabel("图像API Key:")
+            self.image_api_key_input = QLineEdit()
+            image_api_layout.addWidget(image_api_label)
+            image_api_layout.addWidget(self.image_api_key_input)
+            layout.addLayout(image_api_layout)
+
+            # 图像Base URL设置
+            image_base_url_layout = QHBoxLayout()
+            image_base_url_label = QLabel("图像Base URL:")
+            self.image_base_url_input = QLineEdit()
+            image_base_url_layout.addWidget(image_base_url_label)
+            image_base_url_layout.addWidget(self.image_base_url_input)
+            layout.addLayout(image_base_url_layout)
+
+            # 图像模型选择
+            image_model_layout = QHBoxLayout()
+            image_model_label = QLabel("图像模型:")
+            self.image_model_combo = QComboBox()
+            self.image_model_combo.addItems(["yi-vision", "gpt-4-vision"])
+            image_model_layout.addWidget(image_model_label)
+            image_model_layout.addWidget(self.image_model_combo)
+            layout.addLayout(image_model_layout)
+
+            # 图像API类型选择
+            image_api_type_layout = QHBoxLayout()
+            image_api_type_label = QLabel("图像API类型:")
+            self.image_api_type_combo = QComboBox()
+            self.image_api_type_combo.addItems(["YiAI", "OpenAI"])
+            image_api_type_layout.addWidget(image_api_type_label)
+            image_api_type_layout.addWidget(self.image_api_type_combo)
+            layout.addLayout(image_api_type_layout)
+
+            # 图像代理设置
+            image_proxy_layout = QHBoxLayout()
+            image_proxy_label = QLabel("图像代理设置:")
+            self.image_proxy_enabled = QCheckBox("启用代理")
+            self.image_proxy_input = QLineEdit()
+            self.image_proxy_input.setPlaceholderText("127.0.0.1:1090")
+            image_proxy_layout.addWidget(image_proxy_label)
+            image_proxy_layout.addWidget(self.image_proxy_enabled)
+            image_proxy_layout.addWidget(self.image_proxy_input)
+            layout.addLayout(image_proxy_layout)
+
+            # 添加截图快捷键设置
+            screenshot_hotkey_layout = QHBoxLayout()
+            screenshot_hotkey_label = QLabel("截图快捷键:")
+            self.screenshot_hotkey_edit = HotkeyEdit()
+            screenshot_hotkey_layout.addWidget(screenshot_hotkey_label)
+            screenshot_hotkey_layout.addWidget(self.screenshot_hotkey_edit)
+            layout.addLayout(screenshot_hotkey_layout)
+
             # 保存按钮
             save_button = QPushButton("保存")
             save_button.clicked.connect(self.save_settings)
@@ -159,51 +226,70 @@ class SettingsWindow(QMainWindow):
         try:
             with open('config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
+                # 文本AI设置
                 self.api_key_input.setText(config.get('api_key', ''))
-                self.base_url_input.setText(config.get('base_url', 'https://api.openai.com/v1'))
-                self.model_combo.setCurrentText(config.get('model', 'yi-lightning'))
-                self.api_type_combo.setCurrentText(config.get('api_type', 'OpenAI'))
+                self.base_url_input.setText(config.get('base_url', ''))
+                self.model_combo.setCurrentText(config.get('model', ''))
+                self.api_type_combo.setCurrentText(config.get('api_type', ''))
                 self.proxy_enabled.setChecked(config.get('proxy_enabled', False))
-                self.proxy_input.setText(config.get('proxy', '127.0.0.1:1090'))
+                self.proxy_input.setText(config.get('proxy', ''))
                 
-                # 加载快捷键设置
+                # 图像AI设置
+                self.image_api_key_input.setText(config.get('image_api_key', ''))
+                self.image_base_url_input.setText(config.get('image_base_url', ''))
+                self.image_model_combo.setCurrentText(config.get('image_model', ''))
+                self.image_api_type_combo.setCurrentText(config.get('image_api_type', ''))
+                self.image_proxy_enabled.setChecked(config.get('image_proxy_enabled', False))
+                self.image_proxy_input.setText(config.get('image_proxy', ''))
+                
+                # 快捷键设置
                 self.hotkey1_edit.setText(config.get('hotkey1', 'Alt+Q'))
                 self.hotkey2_edit.setText(config.get('hotkey2', 'Alt+W'))
+                self.selection_hotkey_edit.setText(config.get('selection_hotkey', 'Alt+2'))
+                self.screenshot_hotkey_edit.setText(config.get('screenshot_hotkey', 'Alt+3'))
         except Exception as e:
             print(f"加载设置失败: {str(e)}")
     
     def save_settings(self):
         try:
-            # 先获取旧的配置
-            try:
-                with open('config.json', 'r', encoding='utf-8') as f:
-                    old_config = json.load(f)
-            except:
-                old_config = {}
+            with open('config.json', 'r', encoding='utf-8') as f:
+                old_config = json.load(f)
 
-            # 准备新的配置
             config = {
+                # 文本AI设置
                 'api_key': self.api_key_input.text(),
                 'base_url': self.base_url_input.text(),
                 'model': self.model_combo.currentText(),
                 'api_type': self.api_type_combo.currentText(),
                 'proxy_enabled': bool(self.proxy_enabled.isChecked()),
                 'proxy': self.proxy_input.text(),
+                
+                # 图像AI设置
+                'image_api_key': self.image_api_key_input.text(),
+                'image_base_url': self.image_base_url_input.text(),
+                'image_model': self.image_model_combo.currentText(),
+                'image_api_type': self.image_api_type_combo.currentText(),
+                'image_proxy_enabled': bool(self.image_proxy_enabled.isChecked()),
+                'image_proxy': self.image_proxy_input.text(),
+                
+                # 快捷键设置
                 'hotkey1': self.hotkey1_edit.text() or 'Alt+Q',
-                'hotkey2': self.hotkey2_edit.text() or 'Alt+W'
+                'hotkey2': self.hotkey2_edit.text() or 'Alt+W',
+                'selection_hotkey': self.selection_hotkey_edit.text() or 'Alt+2',
+                'screenshot_hotkey': self.screenshot_hotkey_edit.text() or 'Alt+3'
             }
 
             # 检查热键是否发生变化
             hotkeys_changed = (
-                config['hotkey1'].lower() != old_config.get('hotkey1', 'Alt+Q').lower() or
-                config['hotkey2'].lower() != old_config.get('hotkey2', 'Alt+W').lower()
+                config['hotkey1'].lower() != old_config.get('hotkey1', '').lower() or
+                config['hotkey2'].lower() != old_config.get('hotkey2', '').lower() or
+                config['selection_hotkey'].lower() != old_config.get('selection_hotkey', '').lower() or
+                config['screenshot_hotkey'].lower() != old_config.get('screenshot_hotkey', '').lower()
             )
 
-            # 保存配置
             with open('config.json', 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)
 
-            # 发送信号时包含热键变化状态
             self.settings_saved.emit({"config": config, "hotkeys_changed": hotkeys_changed})
             self.hide()
         except Exception as e:

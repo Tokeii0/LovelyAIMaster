@@ -24,308 +24,36 @@ from settings_window import SettingsWindow
 from prompts_window import PromptsWindow
 import traceback
 import os
-import threading
 import win32com.shell.shell as shell   # type: ignore
-import win32con
-import win32event
+
 import win32gui
 
 import win32process
 from win32com.shell import shellcon # type: ignore
 
+from selection_search import SelectionSearchDialog
+
+from hotkey_manager import GlobalHotkey
+from floating_button import FloatingStopButton
+from utils import remove_markdown
+from styles import MAIN_STYLE, CHECKBOX_STYLE
+
+from screenshot import ScreenshotOverlay
+import mss
+import numpy as np
+from PIL import Image
+import io
+
+from ai_image_client import AIImageClient
+from image_analysis_dialog import ImageAnalysisDialog
+
 # 在程序开始时设置 DPI 感知
 ctypes.windll.user32.SetProcessDPIAware()
 
-class GlobalHotkey(QObject):
-    triggered = Signal()
-    hotkey_failed = Signal(str)
-    
-    def __init__(self):
-        super().__init__()
-        self.running = True
-        self.hotkey_registered = False
-        self.retry_count = 0
-        self.max_retries = 3
-        self.lock = threading.Lock()
-        self.last_trigger_time = time.time()
-        
-        # 缩短检查间隔
-        self.check_timer = QTimer()
-        self.check_timer.timeout.connect(self._check_hotkey_status)
-        self.check_timer.start(2000)  # 改为2秒
-        
-        self.thread_check_timer = QTimer()
-        self.thread_check_timer.timeout.connect(self._check_thread_status)
-        self.thread_check_timer.start(1000)  # 改为1秒
-        
-        self.force_restart_timer = QTimer()
-        self.force_restart_timer.timeout.connect(self.force_restart)
-        self.force_restart_timer.start(60000)  # 改为1分钟
-        
-        self._start_monitoring()
-    
-    def _check_thread_status(self):
-        """检查监听线程状态"""
-        try:
-            if not hasattr(self, 'monitor_thread') or not self.monitor_thread.is_alive():
-                self.restart()
-            # 缩短无响应时间判断
-            elif time.time() - self.last_trigger_time > 15:  # 改为15秒
-                self.restart()
-        except Exception as e:
-            self.restart()  # 出现异常时也重启
-    
-    def force_restart(self):
-        """强制重启热键监听"""
-        try:
-            #print("执行定期强制重启")
-            self.restart()
-        except Exception as e:
-            pass
-    
-    def restart(self):
-        """重新启动热键监听"""
-        with self.lock:
-            try:
-                # 先停止所有定时器
-                self.check_timer.stop()
-                self.thread_check_timer.stop()
-                self.force_restart_timer.stop()
-
-                # 确保旧的监听线程完全停止
-                self.running = False
-                self.hotkey_registered = False
-                
-                # 清理现有热键
-                try:
-                    keyboard.unhook_all()
-                except:
-                    pass
-
-                # 等待旧线程结束
-                if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
-                    try:
-                        self.monitor_thread.join(timeout=0.5)  # 最多等待0.5秒
-                    except:
-                        pass
-
-                # 重置状态
-                self.running = True
-                self.retry_count = 0
-                self.last_trigger_time = time.time()
-
-                # 启动新的监听线程
-                self._start_monitoring()
-
-                # 重新启动定时器
-                self.check_timer.start(2000)
-                self.thread_check_timer.start(1000)
-                self.force_restart_timer.start(60000)
-
-            except Exception as e:
-                traceback.print_exc()
-                # 发送失败信号
-                self.hotkey_failed.emit(f"重启失败: {str(e)}")
-                # 确保定时器重新启动
-                self._ensure_timers_running()
-
-    def _ensure_timers_running(self):
-        """确保所有定时器都在运行"""
-        try:
-            if not self.check_timer.isActive():
-                self.check_timer.start(2000)
-            if not self.thread_check_timer.isActive():
-                self.thread_check_timer.start(1000)
-            if not self.force_restart_timer.isActive():
-                self.force_restart_timer.start(60000)
-        except:
-            pass
-
-    def _start_monitoring(self):
-        """启动热键监听线程"""
-        try:
-            # 确保之前的线程已经停止
-            if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
-                self.running = False
-                try:
-                    self.monitor_thread.join(timeout=0.5)
-                except:
-                    pass
-
-            # 清理现有热键
-            self._clean_existing_hotkey()
-            
-            # 创建新线程
-            self.monitor_thread = Thread(target=self._monitor_hotkey, daemon=True)
-            self.monitor_thread.start()
-
-            # 等待线程实际启动
-            time.sleep(0.1)
-            
-            # 验证线程是否成功启动
-            if not self.monitor_thread.is_alive():
-                raise Exception("监听线程启动失败")
-
-        except Exception as e:
-            self.hotkey_failed.emit(str(e))
-            # 确保定时器继续运行
-            self._ensure_timers_running()
-
-    def _monitor_hotkey(self):
-        """热键监听主循环"""
-        while self.running:
-            try:
-                with self.lock:
-                    if not self.hotkey_registered:
-                        # 确保清理现有热键
-                        keyboard.unhook_all()
-                        time.sleep(0.05)
-                        
-                        try:
-                            # 注册热键
-                            keyboard.add_hotkey('alt+q', self._on_hotkey_triggered, suppress=True)
-                            keyboard.add_hotkey('alt+w', self._on_hotkey_triggered, suppress=True)
-                            self.hotkey_registered = True
-                            self.retry_count = 0
-                            self.last_trigger_time = time.time()
-                        except Exception as e:
-                            self.hotkey_registered = False
-                            raise e
-
-                # 更频繁但更轻量的检查
-                for _ in range(100):
-                    if not self.running or not self.hotkey_registered:
-                        break
-                    time.sleep(0.001)
-                    
-            except Exception as e:
-                self.hotkey_registered = False
-                self.retry_count += 1
-                
-                if self.retry_count > self.max_retries:
-                    self.hotkey_failed.emit(str(e))
-                    self.retry_count = 0
-                
-                # 短暂等待后继续尝试
-                time.sleep(0.1)
-    
-    def stop(self):
-        """停止热键监听"""
-        with self.lock:
-            try:
-                self.running = False
-                self.hotkey_registered = False
-                keyboard.unhook_all()
-            except:
-                pass
-            finally:
-                # 确保定时器停止
-                self.check_timer.stop()
-                self.thread_check_timer.stop()
-                self.force_restart_timer.stop()
-    
-    def _on_hotkey_triggered(self):
-        """热键触发时的处理函数"""
-        try:
-            self.last_trigger_time = time.time()  # 更新最后触发时间
-            self.triggered.emit()
-        except Exception as e:
-            traceback.print_exc()
-    
-    def _clean_existing_hotkey(self):
-        """清理已存在的热键"""
-        try:
-            keyboard.unhook_all()
-            time.sleep(0.1)
-        except Exception as e:
-            pass
-            #print(f"清理现有热键失败: {str(e)}")
-    
-    def _check_hotkey_status(self):
-        """定期检查热键状态"""
-        try:
-            # 缩短重新注册时间
-            if time.time() - self.last_trigger_time > 30:  # 改为30秒
-                self.restart()
-        except Exception as e:
-            self.restart()  # 出现异常时也重启
-    
-    def _heartbeat(self):
-        """心跳检测，确保主线程正常运行"""
-        try:
-            if not self.monitor_thread.is_alive():
-                #print("监听线程已死，重新启动")
-                self.restart()
-        except Exception as e:
-            pass
-
-class FloatingStopButton(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.stop_button = QPushButton("停止")
-        self.stop_button.setObjectName("stopButton")
-        self.stop_button.setStyleSheet("""
-            QPushButton#stopButton {
-                background-color: rgba(255, 68, 68, 80%);
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px 15px;
-                font-size: 13px;
-                min-height: 25px;
-                min-width: 60px;
-            }
-            QPushButton#stopButton:hover {
-                background-color: rgba(255, 38, 38, 80%);
-            }
-        """)
-        
-        layout.addWidget(self.stop_button)
-        self.resize(70, 35)
-
-    def show_at_cursor(self):
-        cursor_pos = QCursor.pos()
-        self.move(cursor_pos.x() + 20, cursor_pos.y() + 20)
-        self.show()
-
-def remove_markdown(text: str) -> str:
-    """移除markdown格式"""
-    # 移除代码块
-    text = re.sub(r'```[\s\S]*?```', '', text)
-    # 移除行内代码
-    text = re.sub(r'`[^`]*`', '', text)
-    # 移除标题
-    text = re.sub(r'#{1,6}\s.*\n', '', text)
-    # 移除粗体和斜体
-    text = re.sub(r'\*\*.*?\*\*', '', text)
-    text = re.sub(r'\*.*?\*', '', text)
-    text = re.sub(r'__.*?__', '', text)
-    text = re.sub(r'_.*?_', '', text)
-    # 移除列表标记
-    text = re.sub(r'^\s*[-*+]\s', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*\d+\.\s', '', text, flags=re.MULTILINE)
-    # 移除链接
-    text = re.sub(r'\[([^\]]*)\]\([^\)]*\)', r'\1', text)
-    # 移除图片
-    text = re.sub(r'!\[([^\]]*)\]\([^\)]*\)', '', text)
-    # 除引用
-    text = re.sub(r'^\s*>\s', '', text, flags=re.MULTILINE)
-    # 移除水平线
-    text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
-    # 移除表格
-    text = re.sub(r'\|.*\|', '', text)
-    text = re.sub(r'^\s*[-:|\s]+$', '', text, flags=re.MULTILINE)
-    # 清理多余的空行
-    text = re.sub(r'\n\s*\n', '\n\n', text)
-    return text.strip()
-
 class InputWindow(QMainWindow):
+    # 添加一个自定义信号用于触发划词搜索
+    selection_triggered = Signal()
+    
     def __init__(self):
         super().__init__()
         try:
@@ -333,49 +61,7 @@ class InputWindow(QMainWindow):
             self.setAttribute(Qt.WA_TranslucentBackground)
             
             # 更新样式表
-            self.setStyleSheet("""
-                QMainWindow {
-                    background: transparent;
-                }
-                QWidget#centralWidget {
-                    background-color: rgba(245, 245, 245, 90%);
-                    border: 1px solid rgba(220, 220, 220, 50%);
-                    border-radius: 10px;
-                }
-                QTextEdit {
-                    background-color: rgba(255, 255, 255, 80%);
-                    border: 1px solid rgba(220, 220, 220, 50%);
-                    border-radius: 5px;
-                    padding: 5px;
-                    font-size: 14px;
-                    color: #333;
-                }
-                QPushButton {
-                    background-color: rgba(74, 144, 226, 80%);
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    padding: 5px 15px;
-                    font-size: 13px;
-                    min-height: 25px;
-                }
-                QPushButton:hover {
-                    background-color: rgba(53, 122, 189, 80%);
-                }
-                QPushButton#closeButton {
-                    background-color: transparent;
-                    color: #666;
-                    font-size: 14px;
-                    padding: 2px;
-                    min-width: 20px;
-                    min-height: 20px;
-                    margin: 2px;
-                }
-                QPushButton#closeButton:hover {
-                    background-color: rgba(255, 68, 68, 80%);
-                    color: white;
-                }
-            """)
+            self.setStyleSheet(MAIN_STYLE)
             
             # 创中心部件
             central_widget = QWidget()
@@ -423,27 +109,13 @@ class InputWindow(QMainWindow):
             
             # 添加过滤markdown的复选框
             self.filter_markdown = QCheckBox("过滤Markdown格式")
-            self.filter_markdown.setStyleSheet("""
-                QCheckBox {
-                    color: #666;
-                    font-size: 12px;
-                }
-                QCheckBox::indicator {
-                    width: 15px;
-                    height: 15px;
-                }
-                QCheckBox::indicator:unchecked {
-                    border: 1px solid #999;
-                    background: rgba(255, 255, 255, 80%);
-                    border-radius: 3px;
-                }
-                QCheckBox::indicator:checked {
-                    border: 1px solid #4A90E2;
-                    background: rgba(74, 144, 226, 80%);
-                    border-radius: 3px;
-                }
-            """)
+            self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.filter_markdown)
+            
+            # 添加流模式的复选框
+            self.stream_mode = QCheckBox("启用流模式")
+            self.stream_mode.setStyleSheet(CHECKBOX_STYLE)
+            button_layout.addWidget(self.stream_mode)
             
             # 添加弹性空间
             button_layout.addStretch()
@@ -489,7 +161,7 @@ class InputWindow(QMainWindow):
             self.ai_client = AIClient(
                 api_key=self.config.get('api_key', ''),
                 base_url=self.config.get('base_url', None),
-                model=self.config.get('model', 'yi-lightning'),
+                model=self.config.get('model', 'gpt-4o'),
                 api_type=self.config.get('api_type', 'OpenAI'),
                 proxy=self.config.get('proxy', '127.0.0.1:1090'),
                 proxy_enabled=self.config.get('proxy_enabled', False)  # 添加代理配置
@@ -526,15 +198,26 @@ class InputWindow(QMainWindow):
                 #print(f"托盘图标创建失败: {str(e)}")
                 traceback.print_exc()
                 
+            # 创建划词搜索对话框
+            self.selection_dialog = SelectionSearchDialog()
+            
+            # 添加一个定时器用于处理划词搜索
+            self.selection_timer = QTimer()
+            self.selection_timer.setSingleShot(True)
+            self.selection_timer.timeout.connect(self._handle_selection_search_in_main_thread)
+            
+            # 连接自义信号到处理函数
+            self.selection_triggered.connect(self._handle_selection_search_in_main_thread)
+            
             # 修改热键连接方式
             try:
                 self.hotkey = GlobalHotkey()
-                # 直接连接到 show_window 方法不使用 QTimer
                 self.hotkey.triggered.connect(self.show_window)
+                self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
-                #print("全局热键监听器创建成功 - Alt+Q/Alt+W")
+                self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
+                
             except Exception as e:
-                #print(f"全局热键监听器创建失败: {str(e)}")
                 traceback.print_exc()
                 
             # 添加窗口显示状态标记
@@ -554,6 +237,26 @@ class InputWindow(QMainWindow):
             self.event_timer.timeout.connect(self._process_events)
             self.event_timer.start(1000)  # 每秒处理一次事件
             
+            # 创建截图覆盖层
+            self.screenshot_overlay = ScreenshotOverlay()
+            self.screenshot_overlay.screenshot_taken.connect(self.handle_screenshot)
+            
+            # 创建图像AI客户端
+            self.ai_image_client = AIImageClient(
+                api_key=self.config.get('image_api_key', ''),
+                base_url=self.config.get('image_base_url', None),
+                model=self.config.get('image_model', 'yi-vision'),
+                proxy=self.config.get('image_proxy', '127.0.0.1:1090'),
+                proxy_enabled=self.config.get('image_proxy_enabled', False)
+            )
+            
+            # 创建图片分析对话框
+            self.image_analysis_dialog = ImageAnalysisDialog()
+            # 使用lambda来创建异步任务
+            self.image_analysis_dialog.analyze_requested.connect(
+                lambda prompt, path: asyncio.create_task(self.handle_image_analysis(prompt, path))
+            )
+            
         except Exception as e:
             #print(f"InputWindow初始化失败: {str(e)}")
             traceback.print_exc()
@@ -564,14 +267,14 @@ class InputWindow(QMainWindow):
         else:
             self.debug_window.show()
     
-    async def get_ai_response(self, prompt):
+    async def get_ai_response(self, prompt: str):
+        """处理流式响应"""
         response_text = ""
-        #print(f"用户输入: {prompt}")
         self.should_stop = False
         self.floating_stop_button.show_at_cursor()  # 显示悬浮停止按钮
         
         try:
-            async for text in self.ai_client.get_response_stream(prompt):
+            async for text in self.ai_client.get_response_stream(prompt, stream=True):
                 if self.should_stop:
                     break
                 # 根据复选框状态决定是否过滤markdown
@@ -579,18 +282,17 @@ class InputWindow(QMainWindow):
                     text = remove_markdown(text)
                 response_text += text
                 self.insert_text_to_cursor(text)
-                #print(text, end='', flush=True)
                 
         except Exception as e:
             error_msg = f"错误: {str(e)}"
-            #print(error_msg)
+            print(error_msg)
         finally:
             self.floating_stop_button.hide()  # 隐藏悬浮停止按钮
             
-        #print("\n响应完成")
         return response_text
     
-    def insert_text_to_cursor(self, text):
+    def insert_text_to_cursor(self, text, stream_mode=True):
+        """入文本到光标位置，支持流式和非流式模式"""
         try:
             # 获取当前激活窗口的句柄和进程ID
             hwnd = GetForegroundWindow()
@@ -631,9 +333,13 @@ class InputWindow(QMainWindow):
                     # 如果剪贴板方式失败，使用逐字符输入
                     SetForegroundWindow(hwnd)  # 再次确保窗口在前台
                     time.sleep(0.01)
-                    for char in text:
-                        keyboard.write(char)
-                        time.sleep(0.01)  # 添加少量延迟以确保输入稳定
+                    if stream_mode:
+                        for char in text:
+                            keyboard.write(char)
+                            time.sleep(0.01)
+                    else:
+                        pyperclip.copy(text)
+                        keyboard.press_and_release('ctrl+v')
                     return
                 
             # 如果是CMD或PowerShell，使用pyautogui
@@ -644,13 +350,12 @@ class InputWindow(QMainWindow):
                 try:
                     # 将文本复制到剪贴板
                     pyperclip.copy(text)
-                    # 模拟��键点击（在命令行��会粘贴）
+                    # 模拟右键点击（在命令行会粘贴）
                     pyautogui.click(button='right')
                     # 恢复原来的剪贴板内容
                     pyperclip.copy(old_clipboard)
                     return
                 except Exception as e:
-                    #print(f"CMD输入失败: {str(e)}")
                     # 如果右键粘贴失败，尝试使用快捷键
                     try:
                         pyautogui.hotkey('ctrl', 'v')
@@ -660,10 +365,19 @@ class InputWindow(QMainWindow):
                         pass
             
             # 对其他应用使用PostMessage方式
-            for char in text:
-                char_code = ord(char)
-                PostMessage(hwnd, WM_CHAR, char_code, 0)
-                time.sleep(0.001)
+            if stream_mode:
+                # 流式模式：逐字符发送
+                for char in text:
+                    char_code = ord(char)
+                    PostMessage(hwnd, WM_CHAR, char_code, 0)
+                    time.sleep(0.001)
+            else:
+                # 非流式模式：使用剪贴板
+                old_clipboard = pyperclip.paste()
+                pyperclip.copy(text)
+                keyboard.press_and_release('ctrl+v')
+                time.sleep(0.01)
+                pyperclip.copy(old_clipboard)
                 
         except Exception as e:
             error_msg = f"输入文本失败: {str(e)}"
@@ -674,7 +388,7 @@ class InputWindow(QMainWindow):
         try:
             # 获取窗口类名
             class_name = win32gui.GetClassName(hwnd)
-            # VB程序通常使用 "ThunderRT6FormDC" 或类似的窗口类名
+            # VB程序通��使用 "ThunderRT6FormDC" 或类似的窗口类名
             return class_name.startswith("ThunderRT") or "VB" in class_name
         except:
             return False
@@ -684,7 +398,7 @@ class InputWindow(QMainWindow):
             # 获取用户输入
             user_input = self.input_text.toPlainText()
             if user_input:
-                # 获取前选中的预设提示词内容
+                # 获取选中的预设提示词内容
                 preset_content = self.prompts_combo.currentData()
                 
                 # 组合最终的提示词
@@ -694,9 +408,21 @@ class InputWindow(QMainWindow):
                 
                 self.input_text.clear()
                 self.hide()
-                await self.get_ai_response(final_prompt)
+
+                # 根据流模式复选框状态决定使用哪种模式
+                if self.stream_mode.isChecked():
+                    # 流式式：逐字显示
+                    await self.get_ai_response(final_prompt)
+                else:
+                    # 非流式模式：一次性示
+                    response = await self.ai_client.get_response(final_prompt)
+                    if self.filter_markdown.isChecked():
+                        response = remove_markdown(response)
+                    # 一次性插入完整响应
+                    self.insert_text_to_cursor(response, stream_mode=False)
+
         except Exception as e:
-            #print(f"处理输入失败: {str(e)}")
+            print(f"处理输入败: {str(e)}")
             traceback.print_exc()
     
     def load_config(self):
@@ -741,7 +467,7 @@ class InputWindow(QMainWindow):
                 window_x = cursor.x() + 10
                 window_y = cursor.y() + 10
                 
-                # 确保窗口不会超出屏幕边界
+                # 确保窗口不会超出幕边界
                 screen = QApplication.primaryScreen().geometry()
                 if window_x + self.width() > screen.width():
                     window_x = screen.width() - self.width()
@@ -810,7 +536,7 @@ class InputWindow(QMainWindow):
             # 更新配置
             self.config = config
             
-            # 重新初始化AI客户端
+            # 重新初始化文本AI客户端
             self.ai_client = AIClient(
                 api_key=config.get('api_key', ''),
                 base_url=config.get('base_url', None),
@@ -820,8 +546,18 @@ class InputWindow(QMainWindow):
                 proxy_enabled=config.get('proxy_enabled', False)
             )
             
+            # 重新初始化图像AI客户端
+            self.ai_image_client = AIImageClient(
+                api_key=config.get('image_api_key', ''),
+                base_url=config.get('image_base_url', None),
+                model=config.get('image_model', 'yi-vision'),
+                proxy=config.get('image_proxy', '127.0.0.1:1090'),
+                proxy_enabled=config.get('image_proxy_enabled', False)
+            )
+            
             # 如果热键设置发生变化，重启热键监听
             if hotkeys_changed:
+                self.hotkey.load_hotkey_config()
                 self.hotkey.restart()
                 
         except Exception as e:
@@ -853,7 +589,7 @@ class InputWindow(QMainWindow):
         except json.JSONDecodeError as e:
             print(f"提示词文件格式错误: {str(e)}")
         except Exception as e:
-            #print(f"加载提示词失败: {str(e)}")
+            #print(f"加载提示词失: {str(e)}")
             traceback.print_exc()
     
     def on_prompt_selected(self, index):
@@ -886,7 +622,7 @@ class InputWindow(QMainWindow):
         self.prompts_window.show()
 
     def handle_hotkey_failure(self, error_msg):
-        """处理热键失败的情况"""
+        """处理键败的情况"""
         #print(f"热键失败: {error_msg}")
         # 使用 QTimer 延迟重启
         QTimer.singleShot(2000, self._delayed_restart_hotkey)
@@ -919,6 +655,12 @@ class InputWindow(QMainWindow):
                 self.hotkey.stop()
                 delattr(self, 'hotkey')
             
+            # 清理划词搜索热键
+            try:
+                keyboard.unhook_all()
+            except:
+                pass
+            
             # 清理其他资源
             if hasattr(self, 'prompts_window'):
                 if hasattr(self.prompts_window, 'save_timer') and self.prompts_window.save_timer.isActive():
@@ -947,6 +689,114 @@ class InputWindow(QMainWindow):
             QApplication.processEvents()
         except Exception as e:
             pass
+
+    def _handle_selection_search_wrapper(self):
+        """在主线程中处理划词搜索"""
+        try:
+            # 使用信号触发主线程处理
+            self.selection_triggered.emit()
+        except Exception as e:
+            print(f"处理划词搜索失败: {str(e)}")
+            traceback.print_exc()
+
+    def _handle_selection_search_in_main_thread(self):
+        """在主线程中创建异步任务"""
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.handle_selection_search())
+        except Exception as e:
+            print(f"创建异步任务失败: {str(e)}")
+            traceback.print_exc()
+
+    async def handle_selection_search(self):
+        """处理划词搜索"""
+        try:
+            # 获取选中的文本
+            selected_text = self.selection_dialog.get_selected_text()
+            if not selected_text:
+                return
+                
+            # 显示对话框
+            self.selection_dialog.show_at_cursor()
+            self.selection_dialog.text_display.clear()  # 清空之前的内容
+            
+            # 构建提示词
+            prompt = f"请解释下面这段文本的含义：\n{selected_text}"
+            
+            # 获取AI响应
+            async for text in self.ai_client.get_response_stream(prompt, stream=True):
+                if self.selection_dialog.isVisible():  # 只有当对话框可见时才更新
+                    self.selection_dialog.set_text(text)
+                else:
+                    break
+                    
+        except Exception as e:
+            print(f"划词搜索失败: {str(e)}")
+            traceback.print_exc()
+
+    def handle_screenshot(self, image_path):
+        """处理截图"""
+        print(f"截图已保存到: {image_path}")
+        try:
+            # 显示图片分析对话框
+            if not self.image_analysis_dialog.isVisible():
+                self.image_analysis_dialog.set_image(image_path)
+                self.image_analysis_dialog.clear_response()
+                self.image_analysis_dialog.show()
+        except Exception as e:
+            print(f"显示图片分析对话框失败: {str(e)}")
+            traceback.print_exc()
+
+    async def handle_image_analysis(self, prompt: str, image_path: str):
+        """处理图片分析请求"""
+        try:
+            # 如果对话框已经隐藏，则不继续处理
+            if not self.image_analysis_dialog.isVisible():
+                return
+                
+            # 读取图片数据
+            with open(image_path, 'rb') as f:
+                image_data = f.read()
+            
+            # 清空之前的响应
+            self.image_analysis_dialog.clear_response()
+            
+            # 根据对话框中的设置决定使用哪种模式
+            if self.image_analysis_dialog.stream_mode.isChecked():
+                async for text in self.ai_image_client.get_response_stream(prompt, image_data):
+                    # 如果对话框已经隐藏，则停止处理
+                    if not self.image_analysis_dialog.isVisible():
+                        break
+                        
+                    if self.image_analysis_dialog.filter_markdown.isChecked():
+                        text = remove_markdown(text)
+                    self.image_analysis_dialog.append_response(text)
+            else:
+                response = await self.ai_image_client.get_response(prompt, image_data)
+                # 如果对话框已经隐藏，则不显示响应
+                if not self.image_analysis_dialog.isVisible():
+                    return
+                    
+                if self.image_analysis_dialog.filter_markdown.isChecked():
+                    response = remove_markdown(response)
+                self.image_analysis_dialog.append_response(response)
+                
+        except Exception as e:
+            if self.image_analysis_dialog.isVisible():
+                error_msg = f"分析图片失败: {str(e)}"
+                print(error_msg)
+                self.image_analysis_dialog.append_response(f"错误: {error_msg}")
+                traceback.print_exc()
+
+    def show_screenshot_overlay(self):
+        """显示截图覆盖层"""
+        # 如果图片分析对话框已经显示，则隐藏它
+        if self.image_analysis_dialog.isVisible():
+            self.image_analysis_dialog.hide()
+            return
+        
+        # 否则显示截图覆盖层
+        self.screenshot_overlay.show()
 
 # 修改 main() 函数
 async def main():
