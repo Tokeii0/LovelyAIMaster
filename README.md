@@ -12,7 +12,7 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
 <!-- prettier-ignore-end -->
 <a href="https://jq.qq.com/?_wv=1027&k=DzOtbzU4"><img src="https://img.shields.io/badge/QQ%E7%BE%A4-856729462-orange?style=flat-square" alt="QQGroup"></a>
   <a href="http://ctf.dog"><img src="https://img.shields.io/badge/CTF%E5%AF%BC%E8%88%AA%E7%AB%99-ctf.dog-5492ff?style=flat-square" alt="ctfnav"></a>
-  <a href=".."><img src="https://img.shields.io/badge/Python%20-%203.10.11-def1f2?style=flat-square" alt="python"></a>
+  <a href=".."><img src="https://img.shields.io/badge/Python%20-%203.13.0-def1f2?style=flat-square" alt="python"></a>
 </div>
 
 设置里面可填各种支持openai库的api大模型
