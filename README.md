@@ -16,6 +16,7 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
 </div>
 
 设置里面可填各种支持openai库的api大模型
+
 ![image](https://github.com/user-attachments/assets/aa65070f-6d75-4ae3-bf35-7d379d0ce840)
 
 
