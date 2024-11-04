@@ -90,7 +90,7 @@ class SettingsWindow(QMainWindow):
             api_type_layout = QHBoxLayout()
             api_type_label = QLabel("API类型:")
             self.api_type_combo = QComboBox()
-            self.api_type_combo.addItems(["OpenAI", "Azure", "Claude"])
+            self.api_type_combo.addItems(["OpenAI", "01AI", "Claude"])
             api_type_layout.addWidget(api_type_label)
             api_type_layout.addWidget(self.api_type_combo)
             layout.addLayout(api_type_layout)
