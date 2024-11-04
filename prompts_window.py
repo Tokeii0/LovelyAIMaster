@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QListWidget, QLabel, QLineEdit, QTextEdit)
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QIcon
 import json
 import traceback
+import os
 
 class PromptsWindow(QMainWindow):
     prompts_updated = Signal()
@@ -18,7 +19,12 @@ class PromptsWindow(QMainWindow):
             central_widget = QWidget()
             self.setCentralWidget(central_widget)
             layout = QHBoxLayout(central_widget)
-                
+            
+            # 添加防抖定时器
+            self.save_timer = QTimer()
+            self.save_timer.setSingleShot(True)  # 设置为单次触发
+            self.save_timer.timeout.connect(self._delayed_save)
+            
             # 左侧列表
             left_layout = QVBoxLayout()
             self.prompts_list = QListWidget()
@@ -44,6 +50,7 @@ class PromptsWindow(QMainWindow):
             title_layout = QHBoxLayout()
             title_label = QLabel("标题:")
             self.title_input = QLineEdit()
+            self.title_input.textChanged.connect(self._schedule_save)  # 使用防抖
             title_layout.addWidget(title_label)
             title_layout.addWidget(self.title_input)
             right_layout.addLayout(title_layout)
@@ -51,72 +58,82 @@ class PromptsWindow(QMainWindow):
             # 内容输入
             content_label = QLabel("内容:")
             self.content_input = QTextEdit()
+            self.content_input.textChanged.connect(self._schedule_save)  # 使用防抖
             right_layout.addWidget(content_label)
             right_layout.addWidget(self.content_input)
             
-            # 保存按钮
-            save_button = QPushButton("保存")
-            save_button.clicked.connect(self.save_prompt)
-            right_layout.addWidget(save_button)
-            
             layout.addLayout(right_layout)
             
-            # 加载提示词
+            # 初始化提示词列表
+            self.prompts = []
             self.load_prompts()
             
             # 设置窗口大小
-            self.resize(600, 400)
+            self.resize(800, 600)
+            
         except Exception as e:
-            #print(f"提示词管理窗口初始化错误: {str(e)}")
-            #print("错误详情:")
             traceback.print_exc()
     
-    def load_prompts(self):
-        """加载提示词"""
+    def _schedule_save(self):
+        """使用防抖定时器延迟保存"""
+        self.save_timer.stop()  # 停止之前的定时器
+        self.save_timer.start(500)  # 500ms 后触发保存
+    
+    def _delayed_save(self):
+        """延迟保存的实际执行函数"""
         try:
-            #print("正在加载提示词...")
-            with open('prompts.json', 'r', encoding='utf-8') as f:
-                self.prompts = json.load(f)
-            self.prompts_list.clear()
-            self.prompts_list.addItems([p['title'] for p in self.prompts])
-            #print(f"成功加载 {len(self.prompts)} 个提示词")
+            current_row = self.prompts_list.currentRow()
+            if current_row >= 0:
+                title = self.title_input.text()
+                content = self.content_input.toPlainText()
+                
+                # 更新数据
+                if len(self.prompts) > current_row:
+                    self.prompts[current_row] = {
+                        'title': title,
+                        'content': content
+                    }
+                    
+                    # 更新列表显示
+                    current_item = self.prompts_list.item(current_row)
+                    if current_item:
+                        current_item.setText(title)
+                    
+                    # 保存到文件
+                    self.save_prompts()
         except Exception as e:
-            #print(f"加载提示词失败: {str(e)}")
-            #print("错误详情:")
             traceback.print_exc()
-            self.prompts = []
     
     def save_prompts(self):
         """保存提示词到文件"""
         try:
-            #print("正在保存提示词到文件...")
-            #print(f"当前提示词列表: {self.prompts}")
-            
             # 确保提示词列表不为空
             if not self.prompts:
-                #print("警告: 提示词列表为空")
                 self.prompts = []
             
-            # 确保prompts.json文件存在
-            try:
-                with open('prompts.json', 'r', encoding='utf-8') as f:
-                    pass
-            except FileNotFoundError:
-                #print("prompts.json不存在，将创建新文件")
-                with open('prompts.json', 'w', encoding='utf-8') as f:
-                    json.dump([], f)
-            
-            # 保存到文件
-            with open('prompts.json', 'w', encoding='utf-8') as f:
+            # 使用临时文件保存
+            temp_file = 'prompts.json.tmp'
+            with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(self.prompts, f, indent=4, ensure_ascii=False)
+            
+            # 成功写入后替换原文件
+            if os.path.exists(temp_file):
+                if os.path.exists('prompts.json'):
+                    os.replace(temp_file, 'prompts.json')
+                else:
+                    os.rename(temp_file, 'prompts.json')
             
             # 发送更新信号
             self.prompts_updated.emit()
-            #print("提示词成功保存到文件")
             
         except Exception as e:
-            #print(f"保存提示词到文件时出错: {str(e)}")
             traceback.print_exc()
+            # 清理临时文件
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
     
     def add_prompt(self):
         """添加新提示词"""
@@ -140,44 +157,6 @@ class PromptsWindow(QMainWindow):
             self.title_input.clear()
             self.content_input.clear()
     
-    def save_prompt(self):
-        """保存当前编辑的提示词"""
-        try:
-            current_row = self.prompts_list.currentRow()
-            #print(f"当前选中行: {current_row}")
-            
-            if current_row >= 0:
-                title = self.title_input.text()
-                content = self.content_input.toPlainText()
-                
-                #print(f"正在保存提示词 - 标题: {title}, 内容长度: {len(content)}")
-                
-                # 确保 self.prompts 已初始化
-                if not hasattr(self, 'prompts'):
-                    #print("prompts列表未初始化，正在初始化...")
-                    self.prompts = []
-                
-                # 确保索引有效
-                while len(self.prompts) <= current_row:
-                    self.prompts.append({})
-                
-                self.prompts[current_row] = {
-                    'title': title,
-                    'content': content
-                }
-                
-                # 更新列表项显示
-                current_item = self.prompts_list.item(current_row)
-                if current_item:
-                    current_item.setText(title)
-                
-                self.save_prompts()
-                #print("提示词保存成功")
-                
-        except Exception as e:
-            #print(f"保存提示词时出错: {str(e)}")
-            traceback.print_exc()
-    
     def on_item_selected(self, current, previous):
         """当列表选择改变时更新编辑区"""
         if current:
@@ -187,6 +166,47 @@ class PromptsWindow(QMainWindow):
             self.content_input.setText(prompt['content'])
     
     def closeEvent(self, event):
-        """重写关闭事件，使窗口关闭时只隐藏而不退出程序"""
-        event.ignore()  # 忽略原始的关闭事件
-        self.hide()     # 只隐藏窗口
+        """窗口关闭时的处理"""
+        try:
+            # 保存最后的更改
+            if self.save_timer.isActive():
+                self._delayed_save()
+            # 停止定时器
+            self.save_timer.stop()
+        except:
+            pass
+        event.ignore()
+        self.hide()
+    
+    def load_prompts(self):
+        """加载提示词列表"""
+        try:
+            # 检查文件是否存在
+            if not os.path.exists('prompts.json'):
+                #print("提示词文件不存在，创建默认文件")
+                default_prompts = [
+                    {
+                        "title": "例提示词",
+                        "content": "这是一个示例提示词"
+                    }
+                ]
+                with open('prompts.json', 'w', encoding='utf-8') as f:
+                    json.dump(default_prompts, f, ensure_ascii=False, indent=4)
+                self.prompts = default_prompts
+            else:
+                # 读取提示词文件
+                with open('prompts.json', 'r', encoding='utf-8') as f:
+                    self.prompts = json.load(f)
+            
+            # 更新列表显示
+            self.prompts_list.clear()
+            for prompt in self.prompts:
+                self.prompts_list.addItem(prompt['title'])
+                
+        except json.JSONDecodeError as e:
+            print(f"提示词文件格式错误: {str(e)}")
+            self.prompts = []
+        except Exception as e:
+            #print(f"加载提示词失败: {str(e)}")
+            traceback.print_exc()
+            self.prompts = []

@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QLineEdit, QComboBox, QCheckBox, QInputDialog)
+                             QPushButton, QLabel, QLineEdit, QComboBox, QCheckBox, 
+                             QInputDialog, QApplication)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon, QKeySequence
 import json
@@ -40,7 +41,7 @@ class HotkeyEdit(QLineEdit):
         self.setText("+".join(sequence))
 
 class SettingsWindow(QMainWindow):
-    settings_saved = Signal(object)
+    settings_saved = Signal(dict)
     
     def __init__(self):
         super().__init__()
@@ -90,7 +91,7 @@ class SettingsWindow(QMainWindow):
             api_type_layout = QHBoxLayout()
             api_type_label = QLabel("API类型:")
             self.api_type_combo = QComboBox()
-            self.api_type_combo.addItems(["OpenAI", "01AI", "Claude"])
+            self.api_type_combo.addItems(["OpenAI", "Azure", "Claude"])
             api_type_layout.addWidget(api_type_label)
             api_type_layout.addWidget(self.api_type_combo)
             layout.addLayout(api_type_layout)
@@ -198,7 +199,7 @@ class SettingsWindow(QMainWindow):
                 config['hotkey2'].lower() != old_config.get('hotkey2', 'Alt+W').lower()
             )
 
-            # 保存配���
+            # 保存配置
             with open('config.json', 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)
 
@@ -303,7 +304,11 @@ class SettingsWindow(QMainWindow):
         self.activateWindow()
     
     def show(self):
-        """重写show方法"""
-        super().show()
-        self.repaint()
-        QApplication.processEvents()
+        """重写show方法，确保窗口显示在最前面"""
+        try:
+            super().show()
+            self.raise_()
+            self.activateWindow()
+            QApplication.processEvents()
+        except Exception as e:
+            traceback.print_exc()

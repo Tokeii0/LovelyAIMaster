@@ -47,17 +47,190 @@ class GlobalHotkey(QObject):
         self.retry_count = 0
         self.max_retries = 3
         self.lock = threading.Lock()
+        self.last_trigger_time = time.time()
+        
+        # 缩短检查间隔
+        self.check_timer = QTimer()
+        self.check_timer.timeout.connect(self._check_hotkey_status)
+        self.check_timer.start(2000)  # 改为2秒
+        
+        self.thread_check_timer = QTimer()
+        self.thread_check_timer.timeout.connect(self._check_thread_status)
+        self.thread_check_timer.start(1000)  # 改为1秒
+        
+        self.force_restart_timer = QTimer()
+        self.force_restart_timer.timeout.connect(self.force_restart)
+        self.force_restart_timer.start(60000)  # 改为1分钟
+        
         self._start_monitoring()
     
+    def _check_thread_status(self):
+        """检查监听线程状态"""
+        try:
+            if not hasattr(self, 'monitor_thread') or not self.monitor_thread.is_alive():
+                self.restart()
+            # 缩短无响应时间判断
+            elif time.time() - self.last_trigger_time > 15:  # 改为15秒
+                self.restart()
+        except Exception as e:
+            self.restart()  # 出现异常时也重启
+    
+    def force_restart(self):
+        """强制重启热键监听"""
+        try:
+            #print("执行定期强制重启")
+            self.restart()
+        except Exception as e:
+            pass
+    
+    def restart(self):
+        """重新启动热键监听"""
+        with self.lock:
+            try:
+                # 先停止所有定时器
+                self.check_timer.stop()
+                self.thread_check_timer.stop()
+                self.force_restart_timer.stop()
+
+                # 确保旧的监听线程完全停止
+                self.running = False
+                self.hotkey_registered = False
+                
+                # 清理现有热键
+                try:
+                    keyboard.unhook_all()
+                except:
+                    pass
+
+                # 等待旧线程结束
+                if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
+                    try:
+                        self.monitor_thread.join(timeout=0.5)  # 最多等待0.5秒
+                    except:
+                        pass
+
+                # 重置状态
+                self.running = True
+                self.retry_count = 0
+                self.last_trigger_time = time.time()
+
+                # 启动新的监听线程
+                self._start_monitoring()
+
+                # 重新启动定时器
+                self.check_timer.start(2000)
+                self.thread_check_timer.start(1000)
+                self.force_restart_timer.start(60000)
+
+            except Exception as e:
+                traceback.print_exc()
+                # 发送失败信号
+                self.hotkey_failed.emit(f"重启失败: {str(e)}")
+                # 确保定时器重新启动
+                self._ensure_timers_running()
+
+    def _ensure_timers_running(self):
+        """确保所有定时器都在运行"""
+        try:
+            if not self.check_timer.isActive():
+                self.check_timer.start(2000)
+            if not self.thread_check_timer.isActive():
+                self.thread_check_timer.start(1000)
+            if not self.force_restart_timer.isActive():
+                self.force_restart_timer.start(60000)
+        except:
+            pass
+
     def _start_monitoring(self):
         """启动热键监听线程"""
         try:
+            # 确保之前的线程已经停止
+            if hasattr(self, 'monitor_thread') and self.monitor_thread.is_alive():
+                self.running = False
+                try:
+                    self.monitor_thread.join(timeout=0.5)
+                except:
+                    pass
+
+            # 清理现有热键
             self._clean_existing_hotkey()
+            
+            # 创建新线程
             self.monitor_thread = Thread(target=self._monitor_hotkey, daemon=True)
             self.monitor_thread.start()
+
+            # 等待线程实际启动
+            time.sleep(0.1)
+            
+            # 验证线程是否成功启动
+            if not self.monitor_thread.is_alive():
+                raise Exception("监听线程启动失败")
+
         except Exception as e:
-            #print(f"启动热键监听线程失败: {str(e)}")
             self.hotkey_failed.emit(str(e))
+            # 确保定时器继续运行
+            self._ensure_timers_running()
+
+    def _monitor_hotkey(self):
+        """热键监听主循环"""
+        while self.running:
+            try:
+                with self.lock:
+                    if not self.hotkey_registered:
+                        # 确保清理现有热键
+                        keyboard.unhook_all()
+                        time.sleep(0.05)
+                        
+                        try:
+                            # 注册热键
+                            keyboard.add_hotkey('alt+q', self._on_hotkey_triggered, suppress=True)
+                            keyboard.add_hotkey('alt+w', self._on_hotkey_triggered, suppress=True)
+                            self.hotkey_registered = True
+                            self.retry_count = 0
+                            self.last_trigger_time = time.time()
+                        except Exception as e:
+                            self.hotkey_registered = False
+                            raise e
+
+                # 更频繁但更轻量的检查
+                for _ in range(100):
+                    if not self.running or not self.hotkey_registered:
+                        break
+                    time.sleep(0.001)
+                    
+            except Exception as e:
+                self.hotkey_registered = False
+                self.retry_count += 1
+                
+                if self.retry_count > self.max_retries:
+                    self.hotkey_failed.emit(str(e))
+                    self.retry_count = 0
+                
+                # 短暂等待后继续尝试
+                time.sleep(0.1)
+    
+    def stop(self):
+        """停止热键监听"""
+        with self.lock:
+            try:
+                self.running = False
+                self.hotkey_registered = False
+                keyboard.unhook_all()
+            except:
+                pass
+            finally:
+                # 确保定时器停止
+                self.check_timer.stop()
+                self.thread_check_timer.stop()
+                self.force_restart_timer.stop()
+    
+    def _on_hotkey_triggered(self):
+        """热键触发时的处理函数"""
+        try:
+            self.last_trigger_time = time.time()  # 更新最后触发时间
+            self.triggered.emit()
+        except Exception as e:
+            traceback.print_exc()
     
     def _clean_existing_hotkey(self):
         """清理已存在的热键"""
@@ -68,69 +241,23 @@ class GlobalHotkey(QObject):
             pass
             #print(f"清理现有热键失败: {str(e)}")
     
-    def _monitor_hotkey(self):
-        """热键监听主循环"""
-        while self.running:
-            try:
-                with self.lock:
-                    if not self.hotkey_registered:
-                        # 注册两个热键组合
-                        keyboard.add_hotkey('alt+q', self._on_hotkey_triggered, suppress=True)
-                        keyboard.add_hotkey('alt+w', self._on_hotkey_triggered, suppress=True)
-                        self.hotkey_registered = True
-                        self.retry_count = 0
-                        #print("热键注册成功: Alt+Q  Alt+W")
-                
-                # 使用简单的循环保持线程运行
-                while self.running and self.hotkey_registered:
-                    time.sleep(0.1)
-                    
-            except Exception as e:
-                #print(f"热键监听错误: {str(e)}")
-                traceback.print_exc()  # 添加详细的错误跟踪
-                self.hotkey_registered = False
-                self.retry_count += 1
-                
-                if self.retry_count <= self.max_retries:
-                    #print(f"尝试重新注册热键 (尝试 {self.retry_count}/{self.max_retries})")
-                    time.sleep(2)
-                else:
-                    #print("热键注册失败次数过多，停止重试")
-                    self.hotkey_failed.emit(str(e))
-                    break
-    
-    def _on_hotkey_triggered(self):
-        """热键触发时的处理函数"""
+    def _check_hotkey_status(self):
+        """定期检查热键状态"""
         try:
-            #print("热键被触发")  # 添加调试输出
-            # 直接发送信号
-            self.triggered.emit()
-            #print("信号已发送")  # 添加调试输出
+            # 缩短重新注册时间
+            if time.time() - self.last_trigger_time > 30:  # 改为30秒
+                self.restart()
         except Exception as e:
-            #print(f"热键触发处理失败: {str(e)}")
-            traceback.print_exc()
+            self.restart()  # 出现异常时也重启
     
-    def restart(self):
-        """重新启动热键监听"""
-        with self.lock:
-            self.stop()
-            time.sleep(1)
-            self.running = True
-            self.hotkey_registered = False
-            self.retry_count = 0
-            self._clean_existing_hotkey()
-            self._start_monitoring()
-    
-    def stop(self):
-        """停止热键监听"""
-        with self.lock:
-            self.running = False
-            self.hotkey_registered = False
-            try:
-                keyboard.unhook_all()
-                time.sleep(0.1)
-            except:
-                pass
+    def _heartbeat(self):
+        """心跳检测，确保主线程正常运行"""
+        try:
+            if not self.monitor_thread.is_alive():
+                #print("监听线程已死，重新启动")
+                self.restart()
+        except Exception as e:
+            pass
 
 class FloatingStopButton(QWidget):
     def __init__(self):
@@ -187,7 +314,7 @@ def remove_markdown(text: str) -> str:
     text = re.sub(r'\[([^\]]*)\]\([^\)]*\)', r'\1', text)
     # 移除图片
     text = re.sub(r'!\[([^\]]*)\]\([^\)]*\)', '', text)
-    # 移除引用
+    # 除引用
     text = re.sub(r'^\s*>\s', '', text, flags=re.MULTILINE)
     # 移除水平线
     text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
@@ -250,7 +377,7 @@ class InputWindow(QMainWindow):
                 }
             """)
             
-            # 创建中心部件
+            # 创中心部件
             central_widget = QWidget()
             central_widget.setObjectName("centralWidget")
             self.setCentralWidget(central_widget)
@@ -402,7 +529,7 @@ class InputWindow(QMainWindow):
             # 修改热键连接方式
             try:
                 self.hotkey = GlobalHotkey()
-                # 直接连接到 show_window 方法，不使用 QTimer
+                # 直接连接到 show_window 方法不使用 QTimer
                 self.hotkey.triggered.connect(self.show_window)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
                 #print("全局热键监听器创建成功 - Alt+Q/Alt+W")
@@ -412,6 +539,20 @@ class InputWindow(QMainWindow):
                 
             # 添加窗口显示状态标记
             self.is_window_visible = False
+            
+            # 确保程序退出时清理热键
+            app = QApplication.instance()
+            app.aboutToQuit.connect(self.cleanup)
+            
+            # 优化响应性检查定时器
+            self.responsiveness_timer = QTimer()
+            self.responsiveness_timer.timeout.connect(self._check_responsiveness)
+            self.responsiveness_timer.start(5000)  # 缩短检查间隔到5秒
+            
+            # 添加事件处理定时器
+            self.event_timer = QTimer()
+            self.event_timer.timeout.connect(self._process_events)
+            self.event_timer.start(1000)  # 每秒处理一次事件
             
         except Exception as e:
             #print(f"InputWindow初始化失败: {str(e)}")
@@ -503,7 +644,7 @@ class InputWindow(QMainWindow):
                 try:
                     # 将文本复制到剪贴板
                     pyperclip.copy(text)
-                    # 模拟右键点击（在命令行中会粘贴）
+                    # 模拟��键点击（在命令行��会粘贴）
                     pyautogui.click(button='right')
                     # 恢复原来的剪贴板内容
                     pyperclip.copy(old_clipboard)
@@ -568,7 +709,7 @@ class InputWindow(QMainWindow):
         except Exception as e:
             error_msg = f"加载配置文件失败: {str(e)}"
             #print(error_msg)
-            # 使用默认配置
+            # 使用默认置
             self.config = {
                 'api_key': '',
                 'base_url': 'https://api.openai.com/v1',
@@ -586,7 +727,7 @@ class InputWindow(QMainWindow):
                 pass
     
     def show_window(self):
-        """显示或隐藏窗口的方法"""
+        """显示或隐窗口的方法"""
         #print("触发显示/隐藏窗口")
         try:
             if self.isVisible():
@@ -687,7 +828,7 @@ class InputWindow(QMainWindow):
             traceback.print_exc()
 
     def load_prompts(self):
-        """加载预设提示词到下拉框"""
+        """加载设提示词到下拉框"""
         try:
             # 检查文件是存在
             if not os.path.exists('prompts.json'):
@@ -701,7 +842,7 @@ class InputWindow(QMainWindow):
                 with open('prompts.json', 'w', encoding='utf-8') as f:
                     json.dump(default_prompts, f, ensure_ascii=False, indent=4)
             
-            # 读取提示词文件
+            # 读取示词文件
             with open('prompts.json', 'r', encoding='utf-8') as f:
                 prompts = json.load(f)
                 self.prompts_combo.clear()
@@ -765,6 +906,48 @@ class InputWindow(QMainWindow):
             pass
         super().closeEvent(event)
 
+    def cleanup(self):
+        """程序退出时的清理工作"""
+        try:
+            # 停止所有定时器
+            for timer in [self.responsiveness_timer, self.event_timer]:
+                if timer and timer.isActive():
+                    timer.stop()
+            
+            # 清理热键
+            if hasattr(self, 'hotkey'):
+                self.hotkey.stop()
+                delattr(self, 'hotkey')
+            
+            # 清理其他资源
+            if hasattr(self, 'prompts_window'):
+                if hasattr(self.prompts_window, 'save_timer') and self.prompts_window.save_timer.isActive():
+                    self.prompts_window._delayed_save()
+                if hasattr(self.prompts_window, 'save_timer'):
+                    self.prompts_window.save_timer.stop()
+            
+            # 处理剩余事件
+            QApplication.processEvents()
+            
+        except Exception as e:
+            pass
+
+    def _check_responsiveness(self):
+        """检查程序响应性"""
+        try:
+            if hasattr(self, 'hotkey') and not self.hotkey.monitor_thread.is_alive():
+                self.hotkey.restart()
+            QApplication.processEvents()  # 确保UI响应
+        except Exception as e:
+            pass
+
+    def _process_events(self):
+        """定期处理积累的事件"""
+        try:
+            QApplication.processEvents()
+        except Exception as e:
+            pass
+
 # 修改 main() 函数
 async def main():
     try:
@@ -775,17 +958,24 @@ async def main():
         try:
             loop = qasync.QEventLoop(app)
             asyncio.set_event_loop(loop)
-            #print("事件循环创建成功")
+            
+            # 添加定期清理任务
+            async def cleanup_routine():
+                while True:
+                    await asyncio.sleep(60)  # 每60秒执行一次
+                    QApplication.processEvents()  # 处理积累的事件
+                    
+            # 启动清理任务
+            loop.create_task(cleanup_routine())
             
             # 运行事件循环
             with loop:
-                loop.run_forever()  # 使用 loop.run_forever()
+                loop.run_forever()
+                
         except Exception as e:
-            #print(f"事件循环错误: {str(e)}")
             traceback.print_exc()
             
     except Exception as e:
-        #print(f"main函数错误: {str(e)}")
         traceback.print_exc()
 
 # 修改程序入口点
