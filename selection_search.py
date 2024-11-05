@@ -3,6 +3,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor, QFont, QCursor, QIcon
 from styles import SELECTION_SEARCH_STYLE, SELECTION_SEARCH_CLOSE_BUTTON_STYLE, SELECTION_SEARCH_TEXT_DISPLAY_STYLE
 import re
+import asyncio
+import traceback
 
 class MarkdownHighlighter(QSyntaxHighlighter):
     """Markdown语法高亮器"""
@@ -96,6 +98,13 @@ class SelectionSearchDialog(QDialog):
         
         # 用于存储当前光标位置
         self.current_cursor = None
+        
+        # 添加AI客户端
+        self.ai_client = None
+    
+    def set_ai_client(self, ai_client):
+        """设置AI客户端"""
+        self.ai_client = ai_client
     
     def set_text(self, text):
         """设置显示文本，避免不必要的换行"""
@@ -135,3 +144,120 @@ class SelectionSearchDialog(QDialog):
         if event.button() == Qt.LeftButton:
             self.drag_position = None
             event.accept()
+    
+    def show_menu(self, text):
+        """显示插件选择菜单"""
+        if not hasattr(self, 'selection_menu'):
+            from selection_menu import SelectionMenu
+            self.selection_menu = SelectionMenu()
+        
+        # 存储当前选中的文本
+        self.current_selected_text = text
+        
+        # 检查信号是否已连接，如果已连接则断开
+        if hasattr(self, '_connected_signals') and self._connected_signals:
+            try:
+                if self.selection_menu.ai_query_triggered.receivers(self.selection_menu.ai_query_triggered) > 0:
+                    self.selection_menu.ai_query_triggered.disconnect()
+                if self.selection_menu.plugin_triggered.receivers(self.selection_menu.plugin_triggered) > 0:
+                    self.selection_menu.plugin_triggered.disconnect()
+                if self.selection_menu.keyword_query_triggered.receivers(self.selection_menu.keyword_query_triggered) > 0:
+                    self.selection_menu.keyword_query_triggered.disconnect()
+            except:
+                pass
+        
+        # 连接新的信号处理函数
+        self.selection_menu.ai_query_triggered.connect(self._handle_ai_query)
+        self.selection_menu.plugin_triggered.connect(self._handle_plugin)
+        self.selection_menu.keyword_query_triggered.connect(self._handle_keyword_query)
+        
+        # 标记信号已连接
+        self._connected_signals = True
+        
+        # 在鼠标位置显示菜单
+        self.selection_menu.show_menu(QCursor.pos(), text)
+    
+    def _handle_ai_query(self):
+        """内部方法：处理AI查询"""
+        self.handle_ai_query(self.current_selected_text)
+    
+    def _handle_plugin(self, plugin):
+        """内部方法：处理插件请求"""
+        self.handle_plugin(self.current_selected_text, plugin)
+    
+    def _handle_keyword_query(self, prompt):
+        """内部方法：处理关键词查询"""
+        self.handle_keyword_query(self.current_selected_text, prompt)
+    
+    async def _process_ai_query(self, text, custom_prompt=None):
+        """异步处理AI查询"""
+        try:
+            # 构建提示词
+            if custom_prompt:
+                # 如果是自定义提示词，将文本添加到提示词后面
+                prompt = f"{custom_prompt}\n{text}"
+            else:
+                # 默认的询问AI模式
+                prompt = f"解释下面这段文本的含义：\n{text}"
+            
+            # 获取AI响应
+            async for response_chunk in self.ai_client.get_response_stream(prompt, stream=True):
+                if self.isVisible():  # 只有当对话框可见时才更新
+                    self.set_text(response_chunk)
+                else:
+                    break
+                    
+        except Exception as e:
+            error_msg = f"获取AI响应失败: {str(e)}"
+            print(error_msg)
+            if self.isVisible():
+                self.text_display.setPlainText(f"错误: {error_msg}")
+    
+    def handle_plugin(self, text, plugin):
+        """处理插件处理请求"""
+        try:
+            result = plugin.process(text)
+            self.show()  # 显示对话框
+            self.text_display.clear()
+            self.text_display.setPlainText(result)
+        except Exception as e:
+            self.show()
+            self.text_display.setPlainText(f"插件处理失败: {str(e)}")
+    
+    def handle_keyword_query(self, text, prompt):
+        """处理关键词查询"""
+        try:
+            if not self.ai_client:
+                self.text_display.setPlainText("错误: AI客户端未初始化")
+                return
+                
+            self.show()  # 显示对话框
+            self.text_display.clear()
+            self.current_cursor = None
+            
+            # 创建异步任务处理AI请求，直接使用提供的提示词
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._process_ai_query(text, prompt))
+            
+        except Exception as e:
+            self.text_display.setPlainText(f"处理查询失败: {str(e)}")
+            traceback.print_exc()
+    
+    def handle_ai_query(self, text):
+        """处理AI查询请求"""
+        try:
+            if not self.ai_client:
+                self.text_display.setPlainText("错误: AI客户端未初始化")
+                return
+                
+            self.show()  # 显示对话框
+            self.text_display.clear()
+            self.current_cursor = None
+            
+            # 创建异步任务处理AI请求，使用传入的text而不是重新获取
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._process_ai_query(text))
+            
+        except Exception as e:
+            self.text_display.setPlainText(f"处理查询失败: {str(e)}")
+            traceback.print_exc()

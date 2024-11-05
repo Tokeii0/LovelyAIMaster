@@ -6,6 +6,8 @@ import traceback
 class SystemTrayIcon(QSystemTrayIcon):
     show_settings_signal = Signal()
     show_prompts_signal = Signal()
+    show_selection_keywords_signal = Signal()
+    reset_hotkeys_signal = Signal()
     quit_signal = Signal()
     
     def __init__(self, parent=None):
@@ -20,18 +22,27 @@ class SystemTrayIcon(QSystemTrayIcon):
             # 添加菜单项
             self.settings_action = self.menu.addAction("设置")
             self.prompts_action = self.menu.addAction("提示词管理")
+            self.selection_keywords_action = self.menu.addAction("划词关键词管理")
+            self.menu.addSeparator()
+            self.reset_hotkeys_action = self.menu.addAction("重置热键")
             self.menu.addSeparator()
             self.quit_action = self.menu.addAction("退出")
             
             # 设置右键菜单
             self.setContextMenu(self.menu)
             
-            # 直接连接信号
+            # 连接信号
             self.settings_action.triggered.connect(
                 lambda: self.show_settings_signal.emit()
             )
             self.prompts_action.triggered.connect(
                 lambda: self.show_prompts_signal.emit()
+            )
+            self.selection_keywords_action.triggered.connect(
+                lambda: self.show_selection_keywords_signal.emit()
+            )
+            self.reset_hotkeys_action.triggered.connect(
+                lambda: self.reset_hotkeys_signal.emit()
             )
             self.quit_action.triggered.connect(
                 lambda: self.quit_signal.emit()

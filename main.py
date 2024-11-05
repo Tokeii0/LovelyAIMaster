@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel, QCheckBox, QComboBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel, QCheckBox, QComboBox, QSystemTrayIcon
 from PySide6.QtCore import Qt, Signal, QObject, QEvent,QTimer
 from PySide6.QtGui import QCursor,QIcon
 import keyboard
@@ -12,7 +12,9 @@ from ai_client import AIClient
 import qasync
 import ctypes
 import pyperclip
-from win32con import WM_CHAR
+from win32con import WM_CHAR,WM_COPY
+import win32clipboard
+
 from win32api import PostMessage
 from win32gui import GetForegroundWindow, SetForegroundWindow
 import re
@@ -46,6 +48,8 @@ import io
 
 from ai_image_client import AIImageClient
 from image_analysis_dialog import ImageAnalysisDialog
+
+from selection_keywords_window import SelectionKeywordsWindow
 
 # 在程序开始时设置 DPI 感知
 ctypes.windll.user32.SetProcessDPIAware()
@@ -191,19 +195,26 @@ class InputWindow(QMainWindow):
             
             # 创建系统托盘图标
             try:
+                print("开始创建托盘图标...")  # 调试信息
                 self.tray_icon = SystemTrayIcon(self)
+                print("连接托盘图标信号...")  # 调试信息
                 self.tray_icon.show_settings_signal.connect(lambda: self.settings_window.show())
                 self.tray_icon.show_prompts_signal.connect(lambda: self.prompts_window.show())
                 self.tray_icon.quit_signal.connect(lambda: QApplication.instance().quit())
-                #print("盘图标创建成功")
+                # 添加重置热键的信号连接
+                print("连接重置热键信号...")  # 调试信息
+                self.tray_icon.reset_hotkeys_signal.connect(self.reset_hotkeys)
+                print("托盘图标创建完成")  # 调试信息
             except Exception as e:
-                #print(f"托盘图标创建失败: {str(e)}")
+                print(f"托盘图标创建失败: {str(e)}")
                 traceback.print_exc()
                 
             # 创建划词搜索对话框
             self.selection_dialog = SelectionSearchDialog()
+            # 设置AI客户
+            self.selection_dialog.set_ai_client(self.ai_client)
             
-            # ��加一个定时器划词搜索
+            # 定时器划词搜索
             self.selection_timer = QTimer()
             self.selection_timer.setSingleShot(True)
             self.selection_timer.timeout.connect(self._handle_selection_search_in_main_thread)
@@ -265,6 +276,15 @@ class InputWindow(QMainWindow):
             self.cleanup_timer.timeout.connect(self._periodic_cleanup)
             self.cleanup_timer.start(300000)  # 每5分钟清理一次
             
+            # 创建划词关键词管理窗口
+            self.selection_keywords_window = SelectionKeywordsWindow()
+            self.selection_keywords_window.keywords_updated.connect(self.refresh_selection_menu)
+            
+            # 连接托盘图标信号
+            self.tray_icon.show_selection_keywords_signal.connect(
+                lambda: self.selection_keywords_window.show()
+            )
+            
         except Exception as e:
             #print(f"InputWindow初始化失败: {str(e)}")
             traceback.print_exc()
@@ -292,8 +312,7 @@ class InputWindow(QMainWindow):
                 self.insert_text_to_cursor(text)
                 
         except Exception as e:
-            error_msg = f"错误: {str(e)}"
-            print(error_msg)
+            traceback.print_exc()
         finally:
             self.floating_stop_button.hide()  # 隐藏悬浮停止按钮
             
@@ -302,7 +321,7 @@ class InputWindow(QMainWindow):
     def insert_text_to_cursor(self, text, stream_mode=True):
         """入文本到光标位置，支持流式和非流式模式"""
         try:
-            # 获取当前激活窗口的句柄和进程ID
+            # 获取当前激活窗口的句柄进程ID
             hwnd = GetForegroundWindow()
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             
@@ -317,7 +336,7 @@ class InputWindow(QMainWindow):
                         word.Selection.TypeText(text)
                     return
                 except Exception as e:
-                    pass
+                    traceback.print_exc()
             
             # 如果是VB程序，使用SendInput模拟键盘输入
             elif process_name.endswith('.exe') and self.is_vb_window(hwnd):
@@ -406,7 +425,7 @@ class InputWindow(QMainWindow):
             # 获取用户输入
             user_input = self.input_text.toPlainText()
             if user_input:
-                # 获取选中的预设提���词内容
+                # 获取选中的预设提词内容
                 preset_content = self.prompts_combo.currentData()
                 
                 # 组合最终的提示词
@@ -475,7 +494,7 @@ class InputWindow(QMainWindow):
                 window_x = cursor.x() + 10
                 window_y = cursor.y() + 10
                 
-                # 确保窗口不会超出幕边界
+                # 确保口不会超出幕边界
                 screen = QApplication.primaryScreen().geometry()
                 if window_x + self.width() > screen.width():
                     window_x = screen.width() - self.width()
@@ -493,7 +512,7 @@ class InputWindow(QMainWindow):
             traceback.print_exc()
 
     def hide(self):
-        """重写hide方法以更新状态"""
+        """重写hide方法以更新态"""
         super().hide()
         self.is_window_visible = False
         #print("窗口已隐藏")
@@ -632,7 +651,7 @@ class InputWindow(QMainWindow):
     def handle_hotkey_failure(self, error_msg):
         """处理热键失败的情况"""
         try:
-            # 尝试重置键盘状态
+            # 尝试重置键盘状
             keyboard.unhook_all()
             time.sleep(0.1)
             
@@ -670,19 +689,6 @@ class InputWindow(QMainWindow):
                 self.hotkey.stop()
                 delattr(self, 'hotkey')
             
-            # 清理划词搜索热键
-            try:
-                keyboard.unhook_all()
-            except:
-                pass
-            
-            # 理其他资源
-            if hasattr(self, 'prompts_window'):
-                if hasattr(self.prompts_window, 'save_timer') and self.prompts_window.save_timer.isActive():
-                    self.prompts_window._delayed_save()
-                if hasattr(self.prompts_window, 'save_timer'):
-                    self.prompts_window.save_timer.stop()
-            
             # 处理剩余事件
             QApplication.processEvents()
             
@@ -690,37 +696,19 @@ class InputWindow(QMainWindow):
             if hasattr(self, 'cleanup_timer') and self.cleanup_timer.isActive():
                 self.cleanup_timer.stop()
                 
-            # 确保清理键盘状态
-            keyboard.unhook_all()
-            
         except Exception as e:
-            pass
+            traceback.print_exc()
 
     def _check_responsiveness(self):
         """检查程序响应性"""
-        try:
-            if hasattr(self, 'hotkey'):
-                # 检查热键状态
-                if not self.hotkey.monitor_thread.is_alive() or \
-                   time.time() - self.hotkey.last_trigger_time > 15:  # 15秒无响应就重启
-                    #print("检测到热键可能失效，尝试重启")
-                    #self.hotkey.restart()
-                    pass
-                
-            QApplication.processEvents()  # 确保UI响应
-        except Exception as e:
-            #print(f"响应性检查失败: {str(e)}")
-            # 发生异常时尝试重启热键
-            # if hasattr(self, 'hotkey'):
-            #     self.hotkey.restart()
-            pass
+        QApplication.processEvents()  # 只保留事件处理
 
     def _process_events(self):
         """定期处理累的事件"""
         try:
             QApplication.processEvents()
         except Exception as e:
-            pass
+            traceback.print_exc()
 
     def _handle_selection_search_wrapper(self):
         """在主线程中处理划词搜索"""
@@ -728,7 +716,7 @@ class InputWindow(QMainWindow):
             # 使用信号触发主线程处理
             self.selection_triggered.emit()
         except Exception as e:
-            print(f"处理划词搜索失败: {str(e)}")
+            print(f"处理词索失败: {str(e)}")
             traceback.print_exc()
 
     def _handle_selection_search_in_main_thread(self):
@@ -737,7 +725,7 @@ class InputWindow(QMainWindow):
             loop = asyncio.get_event_loop()
             loop.create_task(self.handle_selection_search())
         except Exception as e:
-            print(f"创建异步任务失败: {str(e)}")
+            print(f"创建异步任务失: {str(e)}")
             traceback.print_exc()
 
     async def handle_selection_search(self):
@@ -749,26 +737,17 @@ class InputWindow(QMainWindow):
                 print("未选中文本")
                 return
                 
-            # 显示对话框
-            self.selection_dialog.show_at_cursor()
-            self.selection_dialog.text_display.clear()  # 清空之前的内容
-            
-            # 构建提示词
-            prompt = f"解释下面这段文本的含义：\n{selected_text}"
+            # 保存选中的文本到剪贴板，并记录原始剪贴板内容
+            old_clipboard = pyperclip.paste()
+            pyperclip.copy(selected_text)
             
             try:
-                # 获取AI响应（不过滤Markdown格式）
-                async for text in self.ai_client.get_response_stream(prompt, stream=True):
-                    if self.selection_dialog.isVisible():  # 只有当对话框可见时才更新
-                        self.selection_dialog.set_text(text)
-                    else:
-                        break
-            except Exception as e:
-                error_msg = f"获取AI响应失败: {str(e)}"
-                print(error_msg)
-                if self.selection_dialog.isVisible():
-                    self.selection_dialog.set_text(f"错误: {error_msg}")
-                
+                # 显示选择菜单
+                self.selection_dialog.show_menu(selected_text)
+            finally:
+                # 恢复原始剪贴板内容
+                pyperclip.copy(old_clipboard)
+            
         except Exception as e:
             print(f"划词搜索失败: {str(e)}")
             traceback.print_exc()
@@ -840,38 +819,120 @@ class InputWindow(QMainWindow):
     def get_selected_text(self):
         """获取选中的文本"""
         try:
-            # 保存当前剪贴板内容
-            old_clipboard = pyperclip.paste()
-            
-            # 模拟 Ctrl+C 复制选中文本
-            keyboard.press_and_release('ctrl+c')
-            time.sleep(0.1)  # 给系统一些时间来处理复制操作
-            
-            # 获取剪贴板内容（即选中的文本）
-            selected_text = pyperclip.paste()
-            
-            # 恢复原来的剪贴板内容
-            pyperclip.copy(old_clipboard)
-            
-            # 如果选中的文本为空或者与原剪贴板内容相同，说明可能没有选中文本
-            if not selected_text or selected_text == old_clipboard:
+            # 获取当前活动窗口
+            hwnd = GetForegroundWindow()
+            if not hwnd:
+                print("无法获取活动窗口")
                 return None
                 
-            return selected_text.strip()
+            # 保存原始剪贴板内容
+            old_clipboard = None
+            try:
+                win32clipboard.OpenClipboard()
+                if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
+                    old_clipboard = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                elif win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT):
+                    old_clipboard = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT)
+                win32clipboard.CloseClipboard()
+            except:
+                pass
+                
+            selected_text = None
+            max_retries = 3  # 最大重试次数
             
+            for attempt in range(max_retries):
+                try:
+                    # 清空剪贴板
+                    win32clipboard.OpenClipboard()
+                    win32clipboard.EmptyClipboard()
+                    win32clipboard.CloseClipboard()
+                    
+                    # 方法1：直接发送WM_COPY消息
+                    win32gui.SendMessage(hwnd, WM_COPY, 0, 0)
+                    time.sleep(0.05)  # 短暂等待
+                    
+                    # 尝试获取剪贴板内容
+                    try:
+                        win32clipboard.OpenClipboard()
+                        if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
+                            selected_text = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                        elif win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT):
+                            selected_text = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT)
+                            if isinstance(selected_text, bytes):
+                                selected_text = selected_text.decode('gbk', errors='ignore')
+                        win32clipboard.CloseClipboard()
+                    except:
+                        pass
+                    
+                    # 如果第一种方法失败，尝试使用 keyboard 模拟按键
+                    if not selected_text:
+                        keyboard.press_and_release('ctrl+c')
+                        time.sleep(0.05)
+                        
+                        try:
+                            win32clipboard.OpenClipboard()
+                            if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
+                                selected_text = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                            elif win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_TEXT):
+                                selected_text = win32clipboard.GetClipboardData(win32clipboard.CF_TEXT)
+                                if isinstance(selected_text, bytes):
+                                    selected_text = selected_text.decode('gbk', errors='ignore')
+                            win32clipboard.CloseClipboard()
+                        except:
+                            pass
+                    
+                    # 如果获取到文本，进行验证和清理
+                    if selected_text and isinstance(selected_text, str):
+                        selected_text = selected_text.strip()
+                        if selected_text:
+                            print(f"第 {attempt + 1} 次尝试成功获取文本")
+                            break
+                        
+                    if attempt < max_retries - 1:  # 如果不是最后一次尝试，则等待后重试
+                        time.sleep(0.05 * (attempt + 1))  # 递增等待时间
+                        
+                except Exception as e:
+                    print(f"第 {attempt + 1} 次尝试失败: {str(e)}")
+                    if attempt < max_retries - 1:
+                        time.sleep(0.05 * (attempt + 1))
+                finally:
+                    try:
+                        win32clipboard.CloseClipboard()
+                    except:
+                        pass
+                        
+            # 恢复原始剪贴板内容
+            try:
+                if old_clipboard is not None:
+                    win32clipboard.OpenClipboard()
+                    win32clipboard.EmptyClipboard()
+                    if isinstance(old_clipboard, str):
+                        win32clipboard.SetClipboardText(old_clipboard, win32clipboard.CF_UNICODETEXT)
+                    win32clipboard.CloseClipboard()
+            except:
+                pass
+            
+            if selected_text:
+                print(f"成功获取选中文本: {selected_text[:50]}...")
+                return selected_text
+            else:
+                print("未能获取选中文本")
+                return None
+                
         except Exception as e:
-            print(f"获取选中文本失败: {str(e)}")
+            print(f"获取选中文本过程失败: {str(e)}")
             traceback.print_exc()
             return None
 
     def _periodic_cleanup(self):
         """定期清理系统资源"""
-        try:
-            if hasattr(self, 'hotkey'):
-                # 移除对不存在方法的调用
-                keyboard.unhook_all()  # 直接使用 keyboard 的 unhook_all 方法
-        except Exception as e:
-            traceback.print_exc()
+        pass
+        # try:
+        #     if hasattr(self, 'hotkey'):
+        #         # 移除对不存在方法的调用
+        #         keyboard.unhook_all()  # 直接使用 keyboard 的 unhook_all 方法
+        # except Exception as e:
+        #    traceback.print_exc()
 
     def show_chat_window(self):
         """显示连续对话窗口"""
@@ -905,8 +966,105 @@ class InputWindow(QMainWindow):
             print(f"显示连续对话窗口失败: {str(e)}")
             traceback.print_exc()
 
+    def refresh_selection_menu(self):
+        """刷新划词菜单"""
+        try:
+            if hasattr(self, 'selection_dialog'):
+                # 确保 selection_menu 已创建
+                if not hasattr(self.selection_dialog, 'selection_menu'):
+                    self.selection_dialog.show_menu("")  # 这会创建 selection_menu
+                # 现在可以安全地刷新菜单
+                self.selection_dialog.selection_menu.refresh_menu()
+        except Exception as e:
+            print(f"刷新划词菜单失败: {str(e)}")
+            traceback.print_exc()
+
+    def reset_hotkeys(self):
+        """重置热键的方法"""
+        print("开始重置热键...")  # 调试信息
+        try:
+            if hasattr(self, 'hotkey'):
+                print("清理现有热键...")  # 调试信息
+                # 完全清理现有热键
+                self.hotkey.stop()
+                keyboard.unhook_all()
+                time.sleep(0.1)
+                
+                print("删除现有热键实例...")  # 调试信息
+                # 删除现有实例
+                delattr(self, 'hotkey')
+                time.sleep(0.1)
+                
+                print("创建新的热键管理器...")  # 调试信息
+                # 重新初始化热键管理器
+                self.hotkey = GlobalHotkey()
+                
+                print("连接信号...")  # 调试信息
+                # 连接信号
+                self.hotkey.triggered.connect(self.show_window)
+                self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
+                self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
+                self.hotkey.chat_triggered.connect(self.show_chat_window)
+                self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                
+                print("重置完成，显示成功消息...")  # 调试信息
+                # 显示提示信息
+                self.tray_icon.showMessage(
+                    "热键重置",
+                    "热键已成功重置",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+                
+                # 确保事件循环处理完成
+                QApplication.processEvents()
+                
+            else:
+                print("未找到热键管理器实例，创建新实例...")  # 调试信息
+                # 如果没有热键实例，创建新实例
+                self.hotkey = GlobalHotkey()
+                self.hotkey.triggered.connect(self.show_window)
+                self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
+                self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
+                self.hotkey.chat_triggered.connect(self.show_chat_window)
+                self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                
+                self.tray_icon.showMessage(
+                    "热键初始化",
+                    "热键已初始化",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+                
+        except Exception as e:
+            error_msg = f"重置热键失败: {str(e)}"
+            print(error_msg)  # 调试信息
+            traceback.print_exc()  # 打印详细错误信息
+            
+            self.tray_icon.showMessage(
+                "热键重置失败",
+                error_msg,
+                QSystemTrayIcon.Warning,
+                2000
+            )
+            
+            # 尝试恢复热键
+            try:
+                print("尝试恢复热键...")  # 调试信息
+                keyboard.unhook_all()
+                time.sleep(0.2)
+                self.hotkey = GlobalHotkey()
+                self.hotkey.triggered.connect(self.show_window)
+                self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
+                self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
+                self.hotkey.chat_triggered.connect(self.show_chat_window)
+                self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+            except Exception as recovery_error:
+                print(f"恢复热键失败: {str(recovery_error)}")  # 调试信息
+                traceback.print_exc()
+
 def check_single_instance():
-    """检查是否已有实例在运行"""
+    """检查是否已有例在运行"""
     try:
         from win32event import CreateMutex
         from win32api import CloseHandle, GetLastError

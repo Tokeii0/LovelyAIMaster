@@ -1,8 +1,24 @@
 from PySide6.QtCore import QObject, Signal, Qt
-import keyboard
+import win32con
+import win32gui
 import json
 import time
 import traceback
+import sys
+import ctypes
+from win32gui import PumpMessages, PostQuitMessage
+import win32gui_struct
+try:
+    import win32api
+except ImportError:
+    import win32api.win32api as win32api
+
+# 定义热键ID
+HOTKEY_SHOW = 1
+HOTKEY_SHOW2 = 2
+HOTKEY_SELECTION = 3
+HOTKEY_SCREENSHOT = 4
+HOTKEY_CHAT = 5
 
 class GlobalHotkey(QObject):
     triggered = Signal()
@@ -15,116 +31,179 @@ class GlobalHotkey(QObject):
         super().__init__(parent)
         
         # 默认快捷键
-        self.hotkey1 = 'Alt+Q'
-        self.hotkey2 = 'Alt+W'
-        self.selection_hotkey = 'Alt+2'
-        self.screenshot_hotkey = 'Alt+3'
-        self.chat_hotkey = 'Ctrl+4'
+        self.hotkey1 = ('Alt', '1')  # 改为元组格式
+        self.hotkey2 = ('Alt', '2')
+        self.selection_hotkey = ('Alt', '3')
+        self.screenshot_hotkey = ('Alt', '4')
+        self.chat_hotkey = ('Control', '4')
         
-        self.registered_hotkeys = []  # 存储所有注册的热键
+        self.registered_hotkeys = {}  # 存储已注册的热键ID
         
-        # 加载配置文件中的快捷键设置
+        # 加载配置
         self.load_hotkey_config()
+        
+        # 创建隐藏窗口接收热键消息
+        self._create_hotkey_window()
         
         # 注册热键
         self._register_hotkeys()
 
+    def _create_hotkey_window(self):
+        """创建隐藏窗口用于接收热键消息"""
+        try:
+            wc = win32gui.WNDCLASS()
+            wc.lpfnWndProc = self._window_proc
+            wc.lpszClassName = "GlobalHotkeyWindow"
+            
+            win32gui.RegisterClass(wc)
+            self.hwnd = win32gui.CreateWindow(
+                wc.lpszClassName,
+                "GlobalHotkeyWindow",
+                0, 0, 0, 0, 0,
+                0, 0, 0, None
+            )
+        except Exception as e:
+            print(f"创建热键窗口失败: {str(e)}")
+            traceback.print_exc()
+
+    def _window_proc(self, hwnd, msg, wparam, lparam):
+        """窗口消息处理"""
+        if msg == win32con.WM_HOTKEY:
+            try:
+                # 根据热键ID触发对应信号
+                if wparam == HOTKEY_SHOW:
+                    self.triggered.emit()
+                elif wparam == HOTKEY_SHOW2:
+                    self.triggered.emit()
+                elif wparam == HOTKEY_SELECTION:
+                    self.selection_triggered.emit()
+                elif wparam == HOTKEY_SCREENSHOT:
+                    self.screenshot_triggered.emit()
+                elif wparam == HOTKEY_CHAT:
+                    self.chat_triggered.emit()
+            except Exception as e:
+                print(f"处理热键消息失败: {str(e)}")
+                traceback.print_exc()
+        return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)
+
     def _register_hotkeys(self):
         """注册热键"""
         try:
-            # 清理现有热键
+            # 先取消注册所有热键
             self._unregister_hotkeys()
             
-            # 先注册一个空的 alt 处理器，避免 alt 键被系统拦截
-            keyboard.on_press_key('alt', lambda _: None, suppress=False)
-            time.sleep(0.05)
-            
-            # 配置热键和对应的信号
-            shortcuts_config = [
-                (self.hotkey1, self.triggered),
-                (self.hotkey2, self.triggered),
-                (self.selection_hotkey, self.selection_triggered),
-                (self.screenshot_hotkey, self.screenshot_triggered),
-                (self.chat_hotkey, self.chat_triggered)
+            # 定义要注册的热键
+            hotkeys = [
+                (HOTKEY_SHOW, self.hotkey1),
+                (HOTKEY_SHOW2, self.hotkey2),
+                (HOTKEY_SELECTION, self.selection_hotkey),
+                (HOTKEY_SCREENSHOT, self.screenshot_hotkey),
+                (HOTKEY_CHAT, self.chat_hotkey)
             ]
             
-            # 打印调试信息
-            print("正在注册的热键:")
-            for key, signal in shortcuts_config:
-                print(f"热键: {key}, 信号: {signal}")
-            
-            # 注册新的热键
-            for key, signal in shortcuts_config:
-                kb_hotkey = key.lower().replace('ctrl', 'control')
+            # 注册每个热键
+            for hotkey_id, (modifier, key) in hotkeys:
                 try:
-                    keyboard.add_hotkey(
-                        kb_hotkey,
-                        lambda s=signal: self._trigger_with_check(s),
-                        suppress=True,
-                        trigger_on_release=False
-                    )
-                    self.registered_hotkeys.append(kb_hotkey)
-                    print(f"成功注册热键: {kb_hotkey}")
-                    time.sleep(0.05)
+                    # 转换修饰键
+                    mod_flag = self._get_modifier_flag(modifier)
+                    # 转换键码
+                    vk_code = self._get_virtual_key_code(key)
+                    
+                    # 使用 user32.dll 直接注册热键
+                    if ctypes.windll.user32.RegisterHotKey(self.hwnd, hotkey_id, mod_flag, vk_code):
+                        self.registered_hotkeys[hotkey_id] = (mod_flag, vk_code)
+                        print(f"成功注册热键: {modifier}+{key}")
+                    else:
+                        error = ctypes.get_last_error()
+                        print(f"注册热键失败: {modifier}+{key}, 错误码: {error}")
+                        
                 except Exception as e:
-                    print(f"注册热键 {kb_hotkey} 失败: {str(e)}")
+                    print(f"注册热键 {modifier}+{key} 失败: {str(e)}")
                     continue
-                
+                    
         except Exception as e:
             print(f"注册热键失败: {str(e)}")
             traceback.print_exc()
             self.hotkey_failed.emit(f"注册热键失败: {str(e)}")
 
-    def _trigger_with_check(self, signal):
-        """带防重复触发检查的信号触发函数"""
-        current_time = time.time()
-        if not hasattr(self, '_last_trigger_time'):
-            self._last_trigger_time = 0
-        
-        # 检查是否在短时间内重复触发（300毫秒内）
-        if current_time - self._last_trigger_time > 0.3:
-            self._last_trigger_time = current_time
-            signal.emit()
+    def _get_modifier_flag(self, modifier):
+        """转换修饰键为win32 flag"""
+        modifier = modifier.lower()
+        if modifier == 'alt':
+            return win32con.MOD_ALT
+        elif modifier == 'control':
+            return win32con.MOD_CONTROL
+        elif modifier == 'shift':
+            return win32con.MOD_SHIFT
+        elif modifier == 'win':
+            return win32con.MOD_WIN
+        return 0
+
+    def _get_virtual_key_code(self, key):
+        """转换键名为虚拟键码"""
+        # 如果是数字键
+        if key.isdigit():
+            return ord(key)
+        # 如果是字母键
+        elif len(key) == 1 and key.isalpha():
+            return ord(key.upper())
+        # 其他特殊键可以继续添加
+        return 0
 
     def _unregister_hotkeys(self):
         """取消注册的热键"""
         try:
-            keyboard.unhook_all()
+            for hotkey_id in list(self.registered_hotkeys.keys()):
+                try:
+                    ctypes.windll.user32.UnregisterHotKey(self.hwnd, hotkey_id)
+                except:
+                    pass
             self.registered_hotkeys.clear()
-            time.sleep(0.1)  # 给系统一些时间来处理
         except Exception as e:
             print(f"取消注册热键失败: {str(e)}")
+            traceback.print_exc()
 
     def stop(self):
         """停止热键监听"""
-        self._unregister_hotkeys()
+        try:
+            self._unregister_hotkeys()
+            if hasattr(self, 'hwnd'):
+                win32gui.DestroyWindow(self.hwnd)
+        except Exception as e:
+            print(f"停止热键监听失败: {str(e)}")
+            traceback.print_exc()
+
+    def restart(self):
+        """重启热键监听"""
+        try:
+            self.stop()
+            time.sleep(0.2)
+            self._create_hotkey_window()
+            self._register_hotkeys()
+        except Exception as e:
+            print(f"重启热键监听失败: {str(e)}")
+            traceback.print_exc()
 
     def load_hotkey_config(self):
         """从配置文件加载快捷键设置"""
         try:
             with open('config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
-                self.hotkey1 = self._format_shortcut(config.get('hotkey1', 'Alt+Q'))
-                self.hotkey2 = self._format_shortcut(config.get('hotkey2', 'Alt+W'))
-                self.selection_hotkey = self._format_shortcut(config.get('selection_hotkey', 'Alt+2'))
-                self.screenshot_hotkey = self._format_shortcut(config.get('screenshot_hotkey', 'Alt+3'))
-                self.chat_hotkey = self._format_shortcut(config.get('chat_hotkey', 'Ctrl+4'))
+                # 转换配置中的快捷键为元组格式
+                self.hotkey1 = self._parse_shortcut(config.get('hotkey1', 'Alt+1'))
+                self.hotkey2 = self._parse_shortcut(config.get('hotkey2', 'Alt+2'))
+                self.selection_hotkey = self._parse_shortcut(config.get('selection_hotkey', 'Alt+3'))
+                self.screenshot_hotkey = self._parse_shortcut(config.get('screenshot_hotkey', 'Alt+4'))
+                self.chat_hotkey = self._parse_shortcut(config.get('chat_hotkey', 'Control+4'))
         except Exception as e:
-            print(f"加载配置文件失败，使用默认快捷键。错误信息：{e}")
-
-    def _format_shortcut(self, shortcut):
-        """格式化快捷键字符串为标准格式"""
-        if not shortcut:
-            return ''
-        parts = shortcut.split('+')
-        return '+'.join(p.capitalize() for p in parts)
-
-    def test_trigger(self, key):
-        print(f"快捷键 {key} 被触发")
-
-    def _cleanup_keyboard_state(self):
-        """清理键盘状态"""
-        try:
-            keyboard.unhook_all()
-        except Exception as e:
+            print(f"加载热键配置失败: {str(e)}")
             traceback.print_exc()
+
+    def _parse_shortcut(self, shortcut):
+        """解析快捷键字符串为元组格式"""
+        if not shortcut:
+            return ('Alt', '1')
+        parts = shortcut.split('+')
+        if len(parts) != 2:
+            return ('Alt', '1')
+        return (parts[0].capitalize(), parts[1])
