@@ -24,7 +24,7 @@ class PromptsWindow(QMainWindow):
             self.save_timer = QTimer()
             self.save_timer.setSingleShot(True)  # 设置为单次触发
             self.save_timer.timeout.connect(self._delayed_save)
-            
+            self.setWindowIcon(QIcon(r"icons\logo.ico"))
             # 左侧列表
             left_layout = QVBoxLayout()
             self.prompts_list = QListWidget()

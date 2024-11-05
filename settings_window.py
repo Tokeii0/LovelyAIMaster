@@ -53,7 +53,7 @@ class SettingsWindow(QMainWindow):
                 Qt.WindowSystemMenuHint |
                 Qt.WindowCloseButtonHint
             )
-            
+            self.setWindowIcon(QIcon(r"icons\logo.ico"))
             # 确保窗口总是显示在最前面
             self.setAttribute(Qt.WA_ShowWithoutActivating, False)
             
@@ -85,7 +85,9 @@ class SettingsWindow(QMainWindow):
             model_layout = QHBoxLayout()
             model_label = QLabel("模型:")
             self.model_combo = QComboBox()
+            self.model_combo.setEditable(True)  # 设置为可编辑
             self.model_combo.addItems(["yi-lightning", "gpt-4o"])
+            self.model_combo.setInsertPolicy(QComboBox.InsertPolicy.InsertAtBottom)  # 新项添加到底部
             model_layout.addWidget(model_label)
             model_layout.addWidget(self.model_combo)
             layout.addLayout(model_layout)
@@ -94,7 +96,9 @@ class SettingsWindow(QMainWindow):
             api_type_layout = QHBoxLayout()
             api_type_label = QLabel("API类型:")
             self.api_type_combo = QComboBox()
+            self.api_type_combo.setEditable(True)  # 设置为可编辑
             self.api_type_combo.addItems(["OpenAI", "Azure", "Claude"])
+            self.api_type_combo.setInsertPolicy(QComboBox.InsertPolicy.InsertAtBottom)
             api_type_layout.addWidget(api_type_label)
             api_type_layout.addWidget(self.api_type_combo)
             layout.addLayout(api_type_layout)
@@ -174,7 +178,9 @@ class SettingsWindow(QMainWindow):
             image_model_layout = QHBoxLayout()
             image_model_label = QLabel("图像模型:")
             self.image_model_combo = QComboBox()
+            self.image_model_combo.setEditable(True)  # 设置为可编辑
             self.image_model_combo.addItems(["yi-vision", "gpt-4-vision"])
+            self.image_model_combo.setInsertPolicy(QComboBox.InsertPolicy.InsertAtBottom)
             image_model_layout.addWidget(image_model_label)
             image_model_layout.addWidget(self.image_model_combo)
             layout.addLayout(image_model_layout)
@@ -183,7 +189,9 @@ class SettingsWindow(QMainWindow):
             image_api_type_layout = QHBoxLayout()
             image_api_type_label = QLabel("图像API类型:")
             self.image_api_type_combo = QComboBox()
-            self.image_api_type_combo.addItems(["YiAI", "OpenAI"])
+            self.image_api_type_combo.setEditable(True)  # 设置为可编辑
+            self.image_api_type_combo.addItems(["OpenAI", "Azure"])
+            self.image_api_type_combo.setInsertPolicy(QComboBox.InsertPolicy.InsertAtBottom)
             image_api_type_layout.addWidget(image_api_type_label)
             image_api_type_layout.addWidget(self.image_api_type_combo)
             layout.addLayout(image_api_type_layout)
@@ -206,6 +214,14 @@ class SettingsWindow(QMainWindow):
             screenshot_hotkey_layout.addWidget(screenshot_hotkey_label)
             screenshot_hotkey_layout.addWidget(self.screenshot_hotkey_edit)
             layout.addLayout(screenshot_hotkey_layout)
+
+            # 添加连续对话快捷键设置
+            chat_hotkey_layout = QHBoxLayout()
+            chat_hotkey_label = QLabel("连续对话快捷键:")
+            self.chat_hotkey_edit = HotkeyEdit()
+            chat_hotkey_layout.addWidget(chat_hotkey_label)
+            chat_hotkey_layout.addWidget(self.chat_hotkey_edit)
+            layout.addLayout(chat_hotkey_layout)
 
             # 保存按钮
             save_button = QPushButton("保存")
@@ -247,6 +263,33 @@ class SettingsWindow(QMainWindow):
                 self.hotkey2_edit.setText(config.get('hotkey2', 'Alt+W'))
                 self.selection_hotkey_edit.setText(config.get('selection_hotkey', 'Alt+2'))
                 self.screenshot_hotkey_edit.setText(config.get('screenshot_hotkey', 'Alt+3'))
+
+                # 添加连续对话快捷键设置
+                self.chat_hotkey_edit.setText(config.get('chat_hotkey', 'ctrl+4'))
+
+                # 设置模型，如果是自定义值则添加到列表中
+                current_model = config.get('model', 'gpt-4o')
+                if current_model not in [self.model_combo.itemText(i) for i in range(self.model_combo.count())]:
+                    self.model_combo.addItem(current_model)
+                self.model_combo.setCurrentText(current_model)
+
+                # 设置API类型，如果是自定义值则添加到列表中
+                current_api_type = config.get('api_type', 'OpenAI')
+                if current_api_type not in [self.api_type_combo.itemText(i) for i in range(self.api_type_combo.count())]:
+                    self.api_type_combo.addItem(current_api_type)
+                self.api_type_combo.setCurrentText(current_api_type)
+
+                # 设置图像模型，如果是自定义值则添加到列表中
+                current_image_model = config.get('image_model', 'yi-vision')
+                if current_image_model not in [self.image_model_combo.itemText(i) for i in range(self.image_model_combo.count())]:
+                    self.image_model_combo.addItem(current_image_model)
+                self.image_model_combo.setCurrentText(current_image_model)
+
+                # 设置图像API类型，如果是自定义值则添加到列表中
+                current_image_api_type = config.get('image_api_type', 'OpenAI')
+                if current_image_api_type not in [self.image_api_type_combo.itemText(i) for i in range(self.image_api_type_combo.count())]:
+                    self.image_api_type_combo.addItem(current_image_api_type)
+                self.image_api_type_combo.setCurrentText(current_image_api_type)
         except Exception as e:
             print(f"加载设置失败: {str(e)}")
     
@@ -276,7 +319,8 @@ class SettingsWindow(QMainWindow):
                 'hotkey1': self.hotkey1_edit.text() or 'Alt+Q',
                 'hotkey2': self.hotkey2_edit.text() or 'Alt+W',
                 'selection_hotkey': self.selection_hotkey_edit.text() or 'Alt+2',
-                'screenshot_hotkey': self.screenshot_hotkey_edit.text() or 'Alt+3'
+                'screenshot_hotkey': self.screenshot_hotkey_edit.text() or 'Alt+3',
+                'chat_hotkey': self.chat_hotkey_edit.text() or 'ctrl+4',
             }
 
             # 检查热键是否发生变化
@@ -284,7 +328,8 @@ class SettingsWindow(QMainWindow):
                 config['hotkey1'].lower() != old_config.get('hotkey1', '').lower() or
                 config['hotkey2'].lower() != old_config.get('hotkey2', '').lower() or
                 config['selection_hotkey'].lower() != old_config.get('selection_hotkey', '').lower() or
-                config['screenshot_hotkey'].lower() != old_config.get('screenshot_hotkey', '').lower()
+                config['screenshot_hotkey'].lower() != old_config.get('screenshot_hotkey', '').lower() or
+                config['chat_hotkey'].lower() != old_config.get('chat_hotkey', '').lower()
             )
 
             with open('config.json', 'w', encoding='utf-8') as f:

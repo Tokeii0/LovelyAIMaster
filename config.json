@@ -1,18 +1,19 @@
 {
-    "api_key": "sk-proj-xxxx",
+    "api_key": "sk-proj-...",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o",
     "api_type": "OpenAI",
     "proxy_enabled": true,
     "proxy": "127.0.0.1:1090",
-    "image_api_key": "xxxxxx",
-    "image_base_url": "https://api.lingyiwanwu.com/v1",
-    "image_model": "yi-vision",
-    "image_api_type": "YiAI",
+    "image_api_key": "sk-proj-...",
+    "image_base_url": "https://api.deepbricks.ai/v1",
+    "image_model": "gpt-4o",
+    "image_api_type": "openai代理",
     "image_proxy_enabled": false,
     "image_proxy": "127.0.0.1:1090",
-    "hotkey1": "Alt+1",
-    "hotkey2": "Alt+Q",
-    "selection_hotkey": "Alt+2",
-    "screenshot_hotkey": "Alt+3"
+    "hotkey1": "Ctrl+1",
+    "hotkey2": "shift+Alt+Q",
+    "selection_hotkey": "Ctrl+2",
+    "screenshot_hotkey": "Ctrl+3",
+    "chat_hotkey": "Ctrl+`"
 }

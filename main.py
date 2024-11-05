@@ -62,7 +62,9 @@ class InputWindow(QMainWindow):
             
             # 更新样式表
             self.setStyleSheet(MAIN_STYLE)
-            
+            # 设置图标
+            self.setWindowIcon(QIcon(r"icons\logo.ico"))
+
             # 创中心部件
             central_widget = QWidget()
             central_widget.setObjectName("centralWidget")
@@ -107,7 +109,7 @@ class InputWindow(QMainWindow):
             # 创建复选框和发送按钮的水平布局
             button_layout = QHBoxLayout()
             
-            # 添加过滤markdown的复选框
+            # 加过滤markdown的复选框
             self.filter_markdown = QCheckBox("过滤Markdown格式")
             self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.filter_markdown)
@@ -229,7 +231,7 @@ class InputWindow(QMainWindow):
             
             # 优化响应性检查定时器
             self.responsiveness_timer = QTimer()
-            self.responsiveness_timer.timeout.connect(self._check_responsiveness)
+            #self.responsiveness_timer.timeout.connect(self._check_responsiveness)
             self.responsiveness_timer.start(5000)  # 缩短检查间隔到5秒
             
             # 添加事件处理定时器
@@ -364,7 +366,7 @@ class InputWindow(QMainWindow):
                     except:
                         pass
             
-            # 对其他应用使用PostMessage方式
+            # 对其他用使用PostMessage方式
             if stream_mode:
                 # 流式模式：逐字符发送
                 for char in text:
@@ -388,7 +390,7 @@ class InputWindow(QMainWindow):
         try:
             # 获取窗口类名
             class_name = win32gui.GetClassName(hwnd)
-            # VB程序通��使用 "ThunderRT6FormDC" 或类似的窗口类名
+            # VB程序通使用 "ThunderRT6FormDC" 或类似的窗口类名
             return class_name.startswith("ThunderRT") or "VB" in class_name
         except:
             return False
@@ -555,10 +557,10 @@ class InputWindow(QMainWindow):
                 proxy_enabled=config.get('image_proxy_enabled', False)
             )
             
-            # 如果热键设置发生变化，重启热键监听
-            if hotkeys_changed:
-                self.hotkey.load_hotkey_config()
-                self.hotkey.restart()
+            # # 如果热键设置发生变化，重启热键监听
+            # if hotkeys_changed:
+            #     self.hotkey.load_hotkey_config()
+            #     self.hotkey.restart()
                 
         except Exception as e:
             traceback.print_exc()
@@ -661,7 +663,7 @@ class InputWindow(QMainWindow):
             except:
                 pass
             
-            # 清理其他资源
+            # 理其他资源
             if hasattr(self, 'prompts_window'):
                 if hasattr(self.prompts_window, 'save_timer') and self.prompts_window.save_timer.isActive():
                     self.prompts_window._delayed_save()
@@ -677,14 +679,24 @@ class InputWindow(QMainWindow):
     def _check_responsiveness(self):
         """检查程序响应性"""
         try:
-            if hasattr(self, 'hotkey') and not self.hotkey.monitor_thread.is_alive():
-                self.hotkey.restart()
+            if hasattr(self, 'hotkey'):
+                # 检查热键状态
+                if not self.hotkey.monitor_thread.is_alive() or \
+                   time.time() - self.hotkey.last_trigger_time > 15:  # 15秒无响应就重启
+                    #print("检测到热键可能失效，尝试重启")
+                    #self.hotkey.restart()
+                    pass
+                
             QApplication.processEvents()  # 确保UI响应
         except Exception as e:
+            #print(f"响应性检查失败: {str(e)}")
+            # 发生异常时尝试重启热键
+            # if hasattr(self, 'hotkey'):
+            #     self.hotkey.restart()
             pass
 
     def _process_events(self):
-        """定期处理积累的事件"""
+        """定期处理累的事件"""
         try:
             QApplication.processEvents()
         except Exception as e:
@@ -712,8 +724,9 @@ class InputWindow(QMainWindow):
         """处理划词搜索"""
         try:
             # 获取选中的文本
-            selected_text = self.selection_dialog.get_selected_text()
+            selected_text = self.get_selected_text()
             if not selected_text:
+                print("未选中文本")
                 return
                 
             # 显示对话框
@@ -721,15 +734,21 @@ class InputWindow(QMainWindow):
             self.selection_dialog.text_display.clear()  # 清空之前的内容
             
             # 构建提示词
-            prompt = f"请解释下面这段文本的含义：\n{selected_text}"
+            prompt = f"��解释下面这段文本的含义：\n{selected_text}"
             
-            # 获取AI响应
-            async for text in self.ai_client.get_response_stream(prompt, stream=True):
-                if self.selection_dialog.isVisible():  # 只有当对话框可见时才更新
-                    self.selection_dialog.set_text(text)
-                else:
-                    break
-                    
+            try:
+                # 获取AI响应（不过滤Markdown格式）
+                async for text in self.ai_client.get_response_stream(prompt, stream=True):
+                    if self.selection_dialog.isVisible():  # 只有当对话框可见时才更新
+                        self.selection_dialog.set_text(text)
+                    else:
+                        break
+            except Exception as e:
+                error_msg = f"获取AI响应失败: {str(e)}"
+                print(error_msg)
+                if self.selection_dialog.isVisible():
+                    self.selection_dialog.set_text(f"错误: {error_msg}")
+                
         except Exception as e:
             print(f"划词搜索失败: {str(e)}")
             traceback.print_exc()
@@ -798,6 +817,48 @@ class InputWindow(QMainWindow):
         # 否则显示截图覆盖层
         self.screenshot_overlay.show()
 
+    def get_selected_text(self):
+        """获取选中的文本"""
+        try:
+            # 保存当前剪贴板内容
+            old_clipboard = pyperclip.paste()
+            
+            # 模拟 Ctrl+C 复制选中文本
+            keyboard.press_and_release('ctrl+c')
+            time.sleep(0.1)  # 给系统一些时间来处理复制操作
+            
+            # 获取剪贴板内容（即选中的文本）
+            selected_text = pyperclip.paste()
+            
+            # 恢复原来的剪贴板内容
+            pyperclip.copy(old_clipboard)
+            
+            # 如果选中的文本为空或者与原剪贴板内容相同，说明可能没有选中文本
+            if not selected_text or selected_text == old_clipboard:
+                return None
+                
+            return selected_text.strip()
+            
+        except Exception as e:
+            print(f"获取选中文本失败: {str(e)}")
+            traceback.print_exc()
+            return None
+
+def check_single_instance():
+    """检查是否已有实例在运行"""
+    try:
+        from win32event import CreateMutex
+        from win32api import CloseHandle, GetLastError
+        from winerror import ERROR_ALREADY_EXISTS
+        
+        mutex = CreateMutex(None, False, "YourAppMutexName")
+        if GetLastError() == ERROR_ALREADY_EXISTS:
+            CloseHandle(mutex)
+            return False
+        return True
+    except:
+        return True
+
 # 修改 main() 函数
 async def main():
     try:
@@ -830,7 +891,13 @@ async def main():
 
 # 修改程序入口点
 if __name__ == "__main__":
+    import os
+    os.environ["QT_LOGGING_RULES"] = "qt.qpa.window=false"
     try:
+        if not check_single_instance():
+            print("程序已在运行！")
+            sys.exit(0)
+        
         asyncio.run(main())
     except Exception as e:
         print(f"程序启动失败: {str(e)}")
