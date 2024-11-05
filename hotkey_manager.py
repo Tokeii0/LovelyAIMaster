@@ -121,3 +121,10 @@ class GlobalHotkey(QObject):
 
     def test_trigger(self, key):
         print(f"快捷键 {key} 被触发")
+
+    def _cleanup_keyboard_state(self):
+        """清理键盘状态"""
+        try:
+            keyboard.unhook_all()
+        except Exception as e:
+            traceback.print_exc()

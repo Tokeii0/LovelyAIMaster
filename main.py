@@ -203,7 +203,7 @@ class InputWindow(QMainWindow):
             # 创建划词搜索对话框
             self.selection_dialog = SelectionSearchDialog()
             
-            # 添加一个定时器划词搜索
+            # ��加一个定时器划词搜索
             self.selection_timer = QTimer()
             self.selection_timer.setSingleShot(True)
             self.selection_timer.timeout.connect(self._handle_selection_search_in_main_thread)
@@ -406,7 +406,7 @@ class InputWindow(QMainWindow):
             # 获取用户输入
             user_input = self.input_text.toPlainText()
             if user_input:
-                # 获取选中的预设提示词内容
+                # 获取选中的预设提���词内容
                 preset_content = self.prompts_combo.currentData()
                 
                 # 组合最终的提示词
@@ -868,7 +868,8 @@ class InputWindow(QMainWindow):
         """定期清理系统资源"""
         try:
             if hasattr(self, 'hotkey'):
-                self.hotkey._cleanup_keyboard_state()
+                # 移除对不存在方法的调用
+                keyboard.unhook_all()  # 直接使用 keyboard 的 unhook_all 方法
         except Exception as e:
             traceback.print_exc()
 
