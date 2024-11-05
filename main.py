@@ -109,7 +109,7 @@ class InputWindow(QMainWindow):
             # 创建复选框和发送按钮的水平布局
             button_layout = QHBoxLayout()
             
-            # 加过滤markdown的复选框
+            # 加过滤markdown的复框
             self.filter_markdown = QCheckBox("过滤Markdown格式")
             self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.filter_markdown)
@@ -175,7 +175,7 @@ class InputWindow(QMainWindow):
             # 添加鼠标跟踪
             self.setMouseTracking(True)
             
-            # 创建置窗口和提示词窗口
+            # 创建置窗口和提词窗口
             self.settings_window = SettingsWindow()
             self.settings_window.setWindowFlags(
                 self.settings_window.windowFlags() | 
@@ -203,12 +203,12 @@ class InputWindow(QMainWindow):
             # 创建划词搜索对话框
             self.selection_dialog = SelectionSearchDialog()
             
-            # 添加一个定时器用于处理划词搜索
+            # 添加一个定时器划词搜索
             self.selection_timer = QTimer()
             self.selection_timer.setSingleShot(True)
             self.selection_timer.timeout.connect(self._handle_selection_search_in_main_thread)
             
-            # 连接自义信号到处理函数
+            # 连接自定义信号到处理函数
             self.selection_triggered.connect(self._handle_selection_search_in_main_thread)
             
             # 修改热键连接方式
@@ -216,9 +216,10 @@ class InputWindow(QMainWindow):
                 self.hotkey = GlobalHotkey()
                 self.hotkey.triggered.connect(self.show_window)
                 self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
-                self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
                 self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
-                
+                # 添加连续对话热键连接
+                self.hotkey.chat_triggered.connect(self.show_chat_window)
+                self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
             except Exception as e:
                 traceback.print_exc()
                 
@@ -258,6 +259,11 @@ class InputWindow(QMainWindow):
             self.image_analysis_dialog.analyze_requested.connect(
                 lambda prompt, path: asyncio.create_task(self.handle_image_analysis(prompt, path))
             )
+            
+            # 添加定期清理计时器
+            self.cleanup_timer = QTimer()
+            self.cleanup_timer.timeout.connect(self._periodic_cleanup)
+            self.cleanup_timer.start(300000)  # 每5分钟清理一次
             
         except Exception as e:
             #print(f"InputWindow初始化失败: {str(e)}")
@@ -303,7 +309,7 @@ class InputWindow(QMainWindow):
             # 获取进程名称
             process_name = psutil.Process(pid).name().lower()
             
-            # 如果是Word，使用Word的COM接口
+            # 如果是Word，使用Word的COM接
             if 'winword' in process_name:
                 try:
                     word = win32com_client.Dispatch("Word.Application")
@@ -320,7 +326,7 @@ class InputWindow(QMainWindow):
                     SetForegroundWindow(hwnd)
                     time.sleep(0.1)  # 给窗口一些时间来获取焦点
                     
-                    # 保存当前剪贴板内容
+                    # 保存当前剪贴板内
                     old_clipboard = pyperclip.paste()
                     
                     # 尝试使用剪贴板方式
@@ -328,12 +334,12 @@ class InputWindow(QMainWindow):
                     keyboard.press_and_release('ctrl+v')
                     time.sleep(0.01)  # 给予一些时间让粘贴完成
                     
-                    # 恢复原来的剪贴板内容
+                    # 恢复原来的剪贴板容
                     pyperclip.copy(old_clipboard)
                     return
                 except:
                     # 如果剪贴板方式失败，使用逐字符输入
-                    SetForegroundWindow(hwnd)  # 再次确保窗口在前台
+                    SetForegroundWindow(hwnd)  # 再确保窗口在前台
                     time.sleep(0.01)
                     if stream_mode:
                         for char in text:
@@ -624,11 +630,18 @@ class InputWindow(QMainWindow):
         self.prompts_window.show()
 
     def handle_hotkey_failure(self, error_msg):
-        """处理键败的情况"""
-        #print(f"热键失败: {error_msg}")
-        # 使用 QTimer 延迟重启
-        QTimer.singleShot(2000, self._delayed_restart_hotkey)
-    
+        """处理热键失败的情况"""
+        try:
+            # 尝试重置键盘状态
+            keyboard.unhook_all()
+            time.sleep(0.1)
+            
+            # 重新初始化热键管理器
+            if hasattr(self, 'hotkey'):
+                self.hotkey._cleanup_keyboard_state()
+        except Exception as e:
+            traceback.print_exc()
+
     def _delayed_restart_hotkey(self):
         try:
             self.hotkey.restart()
@@ -672,6 +685,13 @@ class InputWindow(QMainWindow):
             
             # 处理剩余事件
             QApplication.processEvents()
+            
+            # 停止清理计时器
+            if hasattr(self, 'cleanup_timer') and self.cleanup_timer.isActive():
+                self.cleanup_timer.stop()
+                
+            # 确保清理键盘状态
+            keyboard.unhook_all()
             
         except Exception as e:
             pass
@@ -734,7 +754,7 @@ class InputWindow(QMainWindow):
             self.selection_dialog.text_display.clear()  # 清空之前的内容
             
             # 构建提示词
-            prompt = f"��解释下面这段文本的含义：\n{selected_text}"
+            prompt = f"解释下面这段文本的含义：\n{selected_text}"
             
             try:
                 # 获取AI响应（不过滤Markdown格式）
@@ -843,6 +863,46 @@ class InputWindow(QMainWindow):
             print(f"获取选中文本失败: {str(e)}")
             traceback.print_exc()
             return None
+
+    def _periodic_cleanup(self):
+        """定期清理系统资源"""
+        try:
+            if hasattr(self, 'hotkey'):
+                self.hotkey._cleanup_keyboard_state()
+        except Exception as e:
+            traceback.print_exc()
+
+    def show_chat_window(self):
+        """显示连续对话窗口"""
+        try:
+            from chat_window import ChatWindow
+            if not hasattr(self, 'chat_window'):
+                self.chat_window = ChatWindow(self.ai_client)
+            
+            if self.chat_window.isVisible():
+                self.chat_window.hide()
+            else:
+                # 获取当前鼠标位置
+                cursor = QCursor.pos()
+                # 设置窗口位置在鼠标光标右下方
+                window_x = cursor.x() + 10
+                window_y = cursor.y() + 10
+                
+                # 确保窗口不会超出屏幕边界
+                screen = QApplication.primaryScreen().geometry()
+                if window_x + self.chat_window.width() > screen.width():
+                    window_x = screen.width() - self.chat_window.width()
+                if window_y + self.chat_window.height() > screen.height():
+                    window_y = screen.height() - self.chat_window.height()
+                
+                self.chat_window.move(window_x, window_y)
+                self.chat_window.show()
+                self.chat_window.raise_()
+                self.chat_window.activateWindow()
+                
+        except Exception as e:
+            print(f"显示连续对话窗口失败: {str(e)}")
+            traceback.print_exc()
 
 def check_single_instance():
     """检查是否已有实例在运行"""
