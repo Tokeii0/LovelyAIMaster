@@ -22,6 +22,14 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
 
 运行之后在托盘找到图标，右键设置里面配置baseurl apikey 以及对应的模型名称 代理配置
 
+推荐几家：
+
+**零一万物**:https://platform.lingyiwanwu.com/details
+
+**deepbricks**:https://deepbricks.ai/
+
+**智谱**:https://open.bigmodel.cn/
+
 ### 默认情况下 
 **ALT+1 任意输入框调起AI写作**
 
