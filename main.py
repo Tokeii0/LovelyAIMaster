@@ -113,7 +113,7 @@ class InputWindow(QMainWindow):
             # 创建复选框和发送按钮的水平布局
             button_layout = QHBoxLayout()
             
-            # 加过滤markdown的复框
+            # 加��滤markdown的复框
             self.filter_markdown = QCheckBox("过滤Markdown格式")
             self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.filter_markdown)
@@ -284,6 +284,9 @@ class InputWindow(QMainWindow):
             self.tray_icon.show_selection_keywords_signal.connect(
                 lambda: self.selection_keywords_window.show()
             )
+            
+            # 添加拖动位置属性
+            self.drag_position = None
             
         except Exception as e:
             #print(f"InputWindow初始化失败: {str(e)}")
@@ -518,13 +521,21 @@ class InputWindow(QMainWindow):
         #print("窗口已隐藏")
 
     def mousePressEvent(self, event):
+        """鼠标按下事件"""
         if event.button() == Qt.LeftButton:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton:
+        """鼠标移动事件"""
+        if event.buttons() & Qt.LeftButton and self.drag_position is not None:
             self.move(event.globalPosition().toPoint() - self.drag_position)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        """鼠标释放事件"""
+        if event.button() == Qt.LeftButton:
+            self.drag_position = None
             event.accept()
 
     def eventFilter(self, obj, event):

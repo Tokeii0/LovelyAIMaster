@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QSizeGrip, QHBoxLayout
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QSizeGrip, QHBoxLayout,QApplication
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor, QFont, QCursor, QIcon
 from styles import SELECTION_SEARCH_STYLE, SELECTION_SEARCH_CLOSE_BUTTON_STYLE, SELECTION_SEARCH_TEXT_DISPLAY_STYLE
@@ -121,11 +121,37 @@ class SelectionSearchDialog(QDialog):
     
     def show_at_cursor(self):
         """在鼠标位置显示对话框"""
-        cursor = QCursor.pos()
-        self.move(cursor.x() + 10, cursor.y() + 10)
-        # 重置光标位置
-        self.current_cursor = None
-        self.show()
+        try:
+            # 获取当前鼠标位置
+            cursor = QCursor.pos()
+            
+            # 获取屏幕尺寸
+            screen = QApplication.primaryScreen().geometry()
+            
+            # 计算窗口位置，确保不会超出屏幕边界
+            window_x = cursor.x() + 10
+            window_y = cursor.y() + 10
+            
+            # 如果窗口会超出右边界，则向左显示
+            if window_x + self.width() > screen.width():
+                window_x = screen.width() - self.width()
+            
+            # 如果窗口会超出下边界，则向上显示
+            if window_y + self.height() > screen.height():
+                window_y = screen.height() - self.height()
+            
+            # 移动窗口到计算好的位置
+            self.move(window_x, window_y)
+            
+            # 重置光标位置
+            self.current_cursor = None
+            self.show()
+            self.raise_()  # 确保窗口在最前
+            self.activateWindow()  # 激活窗口
+            
+        except Exception as e:
+            print(f"显示窗口失败: {str(e)}")
+            traceback.print_exc()
     
     def mousePressEvent(self, event):
         """鼠标按下事件"""
@@ -154,28 +180,21 @@ class SelectionSearchDialog(QDialog):
         # 存储当前选中的文本
         self.current_selected_text = text
         
-        # 检查信号是否已连接，如果已连接则断开
+        # 清理旧的信号连接
         if hasattr(self, '_connected_signals') and self._connected_signals:
-            try:
-                if self.selection_menu.ai_query_triggered.receivers(self.selection_menu.ai_query_triggered) > 0:
-                    self.selection_menu.ai_query_triggered.disconnect()
-                if self.selection_menu.plugin_triggered.receivers(self.selection_menu.plugin_triggered) > 0:
-                    self.selection_menu.plugin_triggered.disconnect()
-                if self.selection_menu.keyword_query_triggered.receivers(self.selection_menu.keyword_query_triggered) > 0:
-                    self.selection_menu.keyword_query_triggered.disconnect()
-            except:
-                pass
+            self.selection_menu.ai_query_triggered.disconnect()
+            self.selection_menu.plugin_triggered.disconnect()
+            self.selection_menu.keyword_query_triggered.disconnect()
         
         # 连接新的信号处理函数
         self.selection_menu.ai_query_triggered.connect(self._handle_ai_query)
         self.selection_menu.plugin_triggered.connect(self._handle_plugin)
         self.selection_menu.keyword_query_triggered.connect(self._handle_keyword_query)
         
-        # 标记信号已连接
         self._connected_signals = True
         
-        # 在鼠标位置显示菜单
-        self.selection_menu.show_menu(QCursor.pos(), text)
+        # 显示菜单
+        self.selection_menu.popup(QCursor.pos())
     
     def _handle_ai_query(self):
         """内部方法：处理AI查询"""
@@ -186,23 +205,44 @@ class SelectionSearchDialog(QDialog):
         self.handle_plugin(self.current_selected_text, plugin)
     
     def _handle_keyword_query(self, prompt):
-        """内部方法：处理关键词查询"""
+        """处理关键词查询"""
         self.handle_keyword_query(self.current_selected_text, prompt)
     
     async def _process_ai_query(self, text, custom_prompt=None):
         """异步处理AI查询"""
         try:
-            # 构建提示词
-            if custom_prompt:
-                # 如果是自定义提示词，将文本添加到提示词后面
-                prompt = f"{custom_prompt}\n{text}"
-            else:
-                # 默认的询问AI模式
-                prompt = f"解释下面这段文本的含义：\n{text}"
+            messages = [
+                {
+                    "role": "system",
+                    "content": "请直接回答问题，不要使用markdown格式。"
+                }
+            ]
             
-            # 获取AI响应
-            async for response_chunk in self.ai_client.get_response_stream(prompt, stream=True):
-                if self.isVisible():  # 只有当对话框可见时才更新
+            if custom_prompt:
+                # 添加提示词
+                messages.append({
+                    "role": "user",
+                    "content": custom_prompt
+                })
+                # 添加文本
+                messages.append({
+                    "role": "user",
+                    "content": text
+                })
+            else:
+                messages.append({
+                    "role": "user",
+                    "content": f"解释下面这段文本的含义：\n{text}"
+                })
+            
+            print("发送到AI的消息列表:", messages)  # 添加调试输出
+            
+            async for response_chunk in self.ai_client.get_response_stream(
+                prompt="",
+                stream=True,
+                messages=messages
+            ):
+                if self.isVisible():
                     self.set_text(response_chunk)
                 else:
                     break
@@ -231,11 +271,14 @@ class SelectionSearchDialog(QDialog):
                 self.text_display.setPlainText("错误: AI客户端未初始化")
                 return
                 
-            self.show()  # 显示对话框
+            # 先清理文本显示
             self.text_display.clear()
             self.current_cursor = None
             
-            # 创建异步任务处理AI请求，直接使用提供的提示词
+            # 显示窗口在当前位置
+            self.show_at_cursor()
+            
+            # 创建异步任务处理AI请求
             loop = asyncio.get_event_loop()
             loop.create_task(self._process_ai_query(text, prompt))
             
@@ -250,11 +293,14 @@ class SelectionSearchDialog(QDialog):
                 self.text_display.setPlainText("错误: AI客户端未初始化")
                 return
                 
-            self.show()  # 显示对话框
+            # 先清理文本显示
             self.text_display.clear()
             self.current_cursor = None
             
-            # 创建异步任务处理AI请求，使用传入的text而不是重新获取
+            # 显示窗口在当前位置
+            self.show_at_cursor()
+            
+            # 创建异步任务处理AI请求
             loop = asyncio.get_event_loop()
             loop.create_task(self._process_ai_query(text))
             
