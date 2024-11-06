@@ -56,6 +56,33 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
 
 笔记本4060、4070推荐**llama-3-8b**模型
 
+## 📎划词插件开发
+
+ - 可以通过源码进行开发
+ - 或者在软件目录下 \_internal\plugins查看插件的代码详情
+比如下面的base64解码
+
+```python
+import base64
+from .base_plugin import BasePlugin
+
+class Base64DecoderPlugin(BasePlugin):
+    @property
+    def name(self) -> str:
+        return "Base64解码"
+    
+    @property
+    def description(self) -> str:
+        return "将Base64编码的文本解码为普通文本"
+    
+    def process(self, text: str) -> str:
+        try:
+            decoded = base64.b64decode(text.encode()).decode()
+            return f"解码结果:\n{decoded}"
+        except:
+            return "无法解码:输入的不是有效的Base64文本" 
+```
+
 ## 🐔使用截图
 ![image](https://github.com/user-attachments/assets/6633a4a1-71fd-410c-b811-868dead0881a)
 
