@@ -15,6 +15,10 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
   <a href=".."><img src="https://img.shields.io/badge/Python%20-%203.13.0-def1f2?style=flat-square" alt="python"></a>
 </div>
 
+## 💰请我吃份黄焖鸡
+![QQ20241106-082434](https://github.com/user-attachments/assets/0e916223-996c-4e69-9789-400218125fcb)
+
+
 
 ## 😆使用
 
