@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <p align="center">
-  <a href="https://ctf.mzy0.com"><img src="https://github.com/Tokeii0/LovelyAImamaster/blob/main/icons/app.png" width="250" height="250" alt="lovelyAImamaster"></a>
+  <a href="https://ctf.mzy0.com"><img src="https://github.com/Tokeii0/LovelyAImamaster/blob/main/icons/app.png?raw=true" width="250" height="250" alt="lovelyAImamaster"></a>
 </p>
 <div align="center">
 
