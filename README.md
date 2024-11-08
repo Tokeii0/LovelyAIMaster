@@ -34,7 +34,7 @@ _✨ 纯AI开发的AI工具，可以在windows任何地方调用AI进行输入 �
 
 **智谱**:https://open.bigmodel.cn/
 
-**openai代理**：https://referer.shadowai.xyz/r/1017257
+**openai代理**：https://ai.ctf.dog
 
 ### 默认情况下 
 **ALT+1 任意输入框调起AI写作**
