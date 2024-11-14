@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QApplication
 from PySide6.QtCore import Qt, QPoint, QRect, Signal
-from PySide6.QtGui import QPainter, QColor, QPen, QPixmap
+from PySide6.QtGui import QPainter, QColor, QPen, QPixmap, QScreen
 import os
 from datetime import datetime
 
@@ -18,9 +18,14 @@ class ScreenshotOverlay(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
-        # 获取主屏幕大小
-        screen = QApplication.primaryScreen().geometry()
-        self.setGeometry(screen)
+        # 获取主屏幕
+        self.screen = QApplication.primaryScreen()
+        # 获取设备像素比
+        self.device_pixel_ratio = self.screen.devicePixelRatio()
+        
+        # 获取主屏幕大小（使用实际像素大小）
+        screen_geometry = self.screen.geometry()
+        self.setGeometry(screen_geometry)
         
         # 确保tmp目录存在
         if not os.path.exists('tmp'):
@@ -29,8 +34,18 @@ class ScreenshotOverlay(QWidget):
     def showEvent(self, event):
         """窗口显示时捕获整个屏幕"""
         if not self.background:
-            screen = QApplication.primaryScreen()
-            self.background = screen.grabWindow(0)
+            # 使用grabWindow替代
+            window_id = 0  # 0 表示整个屏幕
+            screen_geometry = self.screen.geometry()
+            self.background = self.screen.grabWindow(
+                window_id,
+                screen_geometry.x(),
+                screen_geometry.y(),
+                screen_geometry.width(),
+                screen_geometry.height()
+            )
+            # 设置设备像素比
+            self.background.setDevicePixelRatio(self.device_pixel_ratio)
         super().showEvent(event)
     
     def paintEvent(self, event):
@@ -45,9 +60,16 @@ class ScreenshotOverlay(QWidget):
             
             # 绘制选区内的实际截图内容
             if self.background:
-                target_rect = rect
-                source_rect = QRect(rect)
-                painter.drawPixmap(target_rect, self.background, source_rect)
+                # 考虑设备像素比进行坐标转换
+                scaled_rect = QRect(
+                    int(rect.x() * self.device_pixel_ratio),
+                    int(rect.y() * self.device_pixel_ratio),
+                    int(rect.width() * self.device_pixel_ratio),
+                    int(rect.height() * self.device_pixel_ratio)
+                )
+                
+                # 使用缩放后的矩形从背景图中获取内容，但绘制到原始大小的矩形中
+                painter.drawPixmap(rect, self.background, scaled_rect)
             
             # 绘制选区边框
             pen = QPen(QColor(0, 174, 255), 2)
@@ -119,8 +141,16 @@ class ScreenshotOverlay(QWidget):
         """保存截图到tmp文件夹"""
         try:
             if self.background:
+                # 考虑设备像素比进行坐标转换
+                scaled_rect = QRect(
+                    int(rect.x() * self.device_pixel_ratio),
+                    int(rect.y() * self.device_pixel_ratio),
+                    int(rect.width() * self.device_pixel_ratio),
+                    int(rect.height() * self.device_pixel_ratio)
+                )
+                
                 # 从背景图中截取选定区域
-                cropped = self.background.copy(rect)
+                cropped = self.background.copy(scaled_rect)
                 
                 # 生成文件名
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

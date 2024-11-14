@@ -17,13 +17,15 @@ class ImageAnalysisDialog(QDialog):
         
         # 创建主布局
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 5, 10, 10)
+        main_layout.setContentsMargins(10, 2, 10, 10)
         main_layout.setSpacing(10)
         
         # 创建顶部布局（只包含关闭按钮）
         top_layout = QHBoxLayout()
         top_layout.setSpacing(0)
+        top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.addStretch()
+        
         
         # 添加关闭按钮
         close_button = QPushButton("×")
@@ -195,8 +197,8 @@ class ImageAnalysisDialog(QDialog):
                 background: transparent;
                 border: none;
                 color: #999;
-                font-size: 18px;
-                padding: 5px 10px;
+                font-size: 16px;
+                padding: 2px 8px;
             }
             QPushButton#closeButton:hover {
                 background-color: #ff4444;
@@ -221,8 +223,8 @@ class ImageAnalysisDialog(QDialog):
                 border-radius: 4px;
             }
             QSplitter::handle {
-                background-color: #e9ecef;
-                width: 1px;
+                background-color: transparent;
+                width: 0px;
             }
         """)
         

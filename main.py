@@ -51,6 +51,8 @@ from image_analysis_dialog import ImageAnalysisDialog
 
 from selection_keywords_window import SelectionKeywordsWindow
 
+from command_window import CommandWindow
+
 # 在程序开始时设置 DPI 感知
 ctypes.windll.user32.SetProcessDPIAware()
 
@@ -113,7 +115,7 @@ class InputWindow(QMainWindow):
             # 创建复选框和发送按钮的水平布局
             button_layout = QHBoxLayout()
             
-            # 加��滤markdown的复框
+            # 加滤markdown的复框
             self.filter_markdown = QCheckBox("过滤Markdown格式")
             self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.filter_markdown)
@@ -122,6 +124,7 @@ class InputWindow(QMainWindow):
             self.stream_mode = QCheckBox("启用流模式")
             self.stream_mode.setStyleSheet(CHECKBOX_STYLE)
             button_layout.addWidget(self.stream_mode)
+            self.stream_mode.setChecked(True)
             
             # 添加弹性空间
             button_layout.addStretch()
@@ -201,7 +204,7 @@ class InputWindow(QMainWindow):
                 self.tray_icon.show_settings_signal.connect(lambda: self.settings_window.show())
                 self.tray_icon.show_prompts_signal.connect(lambda: self.prompts_window.show())
                 self.tray_icon.quit_signal.connect(lambda: QApplication.instance().quit())
-                # 添加重置热键的信号连接
+                # 添加重置热键的信
                 print("连接重置热键信号...")  # 调试信息
                 self.tray_icon.reset_hotkeys_signal.connect(self.reset_hotkeys)
                 print("托盘图标创建完成")  # 调试信息
@@ -228,10 +231,11 @@ class InputWindow(QMainWindow):
                 self.hotkey.triggered.connect(self.show_window)
                 self.hotkey.selection_triggered.connect(self._handle_selection_search_in_main_thread)
                 self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
-                # 添加连续对话热键连接
                 self.hotkey.chat_triggered.connect(self.show_chat_window)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                self.hotkey.selection_to_input_triggered.connect(self.handle_selection_to_input)
             except Exception as e:
+                print(f"热键初始化失败: {str(e)}")
                 traceback.print_exc()
                 
             # 添加窗口显示状态标记
@@ -354,7 +358,7 @@ class InputWindow(QMainWindow):
                     # 尝试使用剪贴板方式
                     pyperclip.copy(text)
                     keyboard.press_and_release('ctrl+v')
-                    time.sleep(0.01)  # 给予一些时间让粘贴完成
+                    time.sleep(0.01)  # 给予一些时间让粘贴成
                     
                     # 恢复原来的剪贴板容
                     pyperclip.copy(old_clipboard)
@@ -386,7 +390,7 @@ class InputWindow(QMainWindow):
                     pyperclip.copy(old_clipboard)
                     return
                 except Exception as e:
-                    # 如果右键粘贴失败，尝试使用快捷键
+                    # 如果右键粘贴失，尝试使用快捷键
                     try:
                         pyautogui.hotkey('ctrl', 'v')
                         pyperclip.copy(old_clipboard)
@@ -418,7 +422,7 @@ class InputWindow(QMainWindow):
         try:
             # 获取窗口类名
             class_name = win32gui.GetClassName(hwnd)
-            # VB程序通使用 "ThunderRT6FormDC" 或类似的窗口类名
+            # VB程序通使用 "ThunderRT6FormDC" 或类似的窗类名
             return class_name.startswith("ThunderRT") or "VB" in class_name
         except:
             return False
@@ -474,7 +478,7 @@ class InputWindow(QMainWindow):
                 'proxy_enabled': False,
                 'proxy': '127.0.0.1:1090'
             }
-            # 创建默认配置文件
+            # 创默认配置文件
             try:
                 with open('config.json', 'w', encoding='utf-8') as f:
                     json.dump(self.config, f, indent=4, ensure_ascii=False)
@@ -593,10 +597,8 @@ class InputWindow(QMainWindow):
                 proxy_enabled=config.get('image_proxy_enabled', False)
             )
             
-            # # 如果热键设置发生变化，重启热键监听
-            # if hotkeys_changed:
-            #     self.hotkey.load_hotkey_config()
-            #     self.hotkey.restart()
+            # 重置热键
+            self.reset_hotkeys()
                 
         except Exception as e:
             traceback.print_exc()
@@ -675,7 +677,7 @@ class InputWindow(QMainWindow):
     def _delayed_restart_hotkey(self):
         try:
             self.hotkey.restart()
-            #print("已重新启动热键监听")
+            #print("已新启动热键监听")
         except Exception as e:
             print(f"重启热键监听失败: {str(e)}")
     
@@ -790,7 +792,7 @@ class InputWindow(QMainWindow):
             # 清空之前的响应
             self.image_analysis_dialog.clear_response()
             
-            # 根据对话框中的设置决定使用哪种模式
+            # 根据对话框的设置决定用哪种模式
             if self.image_analysis_dialog.stream_mode.isChecked():
                 async for text in self.ai_image_client.get_response_stream(prompt, image_data):
                     # 如果对话框已经隐藏，则停止处理
@@ -824,7 +826,7 @@ class InputWindow(QMainWindow):
             self.image_analysis_dialog.hide()
             return
         
-        # 否则显示截图覆盖层
+        # 否则示截图覆盖层
         self.screenshot_overlay.show()
 
     def get_selected_text(self):
@@ -860,7 +862,7 @@ class InputWindow(QMainWindow):
                     
                     # 方法1：直接发送WM_COPY消息
                     win32gui.SendMessage(hwnd, WM_COPY, 0, 0)
-                    time.sleep(0.05)  # 短暂等待
+                    time.sleep(0.05)  # 短暂等
                     
                     # 尝试获取剪贴板内容
                     try:
@@ -896,7 +898,7 @@ class InputWindow(QMainWindow):
                     if selected_text and isinstance(selected_text, str):
                         selected_text = selected_text.strip()
                         if selected_text:
-                            print(f"第 {attempt + 1} 次尝试成功获取文本")
+                            print(f"第 {attempt + 1} 次尝成功获取文本")
                             break
                         
                     if attempt < max_retries - 1:  # 如果不是最后一次尝试，则等待后重试
@@ -1017,6 +1019,8 @@ class InputWindow(QMainWindow):
                 self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
                 self.hotkey.chat_triggered.connect(self.show_chat_window)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                # 添加Alt+1热键处理
+                self.hotkey.selection_to_input_triggered.connect(self.handle_selection_to_input)
                 
                 print("重置完成，显示成功消息...")  # 调试信息
                 # 显示提示信息
@@ -1039,6 +1043,8 @@ class InputWindow(QMainWindow):
                 self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
                 self.hotkey.chat_triggered.connect(self.show_chat_window)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                # 添加Alt+1热键处理
+                self.hotkey.selection_to_input_triggered.connect(self.handle_selection_to_input)
                 
                 self.tray_icon.showMessage(
                     "热键初始化",
@@ -1070,9 +1076,35 @@ class InputWindow(QMainWindow):
                 self.hotkey.screenshot_triggered.connect(self.show_screenshot_overlay)
                 self.hotkey.chat_triggered.connect(self.show_chat_window)
                 self.hotkey.hotkey_failed.connect(self.handle_hotkey_failure)
+                # 添加Alt+1热键处理
+                self.hotkey.selection_to_input_triggered.connect(self.handle_selection_to_input)
             except Exception as recovery_error:
                 print(f"恢复热键失败: {str(recovery_error)}")  # 调试信息
                 traceback.print_exc()
+
+    def handle_selection_to_input(self):
+        """处理将选中文本添加到输入框的功能"""
+        try:
+            print("开始处理选中文本到输入框...")  # 调试输出
+            selected_text = self.get_selected_text()
+            print(f"获取到的选中文本: {selected_text}")  # 调试输出
+            
+            # 先显示窗口
+            print("显示窗口...")  # 调试输出
+            self.show_window()  # 显示窗口
+            
+            # 如果有选中文本，则填充到输入框
+            if selected_text:
+                print("设置文本到输入框...")  # 调试输出
+                self.input_text.setText(selected_text)
+                
+            print("设置焦点...")  # 调试输出
+            self.input_text.setFocus()  # 设置焦点到输入框
+            print("处理完成")  # 调试输出
+            
+        except Exception as e:
+            print(f"添加选中文本到输入框失败: {str(e)}")
+            traceback.print_exc()
 
 def check_single_instance():
     """检查是否已有例在运行"""

@@ -46,7 +46,7 @@ class SettingsWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         try:
-            self.setWindowTitle("设置")
+            self.setWindowTitle("设置(国内GPT使用推荐ai.ctf.dog)")
             self.setWindowFlags(
                 Qt.Window |
                 Qt.WindowStaysOnTopHint |
@@ -223,6 +223,15 @@ class SettingsWindow(QMainWindow):
             chat_hotkey_layout.addWidget(self.chat_hotkey_edit)
             layout.addLayout(chat_hotkey_layout)
 
+            # 添加 ES 设置
+            es_layout = QHBoxLayout()
+            es_label = QLabel("Everything路径:")
+            self.es_path_input = QLineEdit()
+            self.es_path_input.setPlaceholderText("C:\\Program Files\\Everything\\es.exe")
+            es_layout.addWidget(es_label)
+            es_layout.addWidget(self.es_path_input)
+            layout.addLayout(es_layout)
+
             # 保存按钮
             save_button = QPushButton("保存")
             save_button.clicked.connect(self.save_settings)
@@ -290,6 +299,9 @@ class SettingsWindow(QMainWindow):
                 if current_image_api_type not in [self.image_api_type_combo.itemText(i) for i in range(self.image_api_type_combo.count())]:
                     self.image_api_type_combo.addItem(current_image_api_type)
                 self.image_api_type_combo.setCurrentText(current_image_api_type)
+
+                # 加载 ES 路径
+                self.es_path_input.setText(config.get('es_path', 'C:\\Program Files\\Everything\\es.exe'))
         except Exception as e:
             print(f"加载设置失败: {str(e)}")
     
@@ -321,6 +333,7 @@ class SettingsWindow(QMainWindow):
                 'selection_hotkey': self.selection_hotkey_edit.text() or 'Alt+2',
                 'screenshot_hotkey': self.screenshot_hotkey_edit.text() or 'Alt+3',
                 'chat_hotkey': self.chat_hotkey_edit.text() or 'ctrl+4',
+                'es_path': self.es_path_input.text() or 'C:\\Program Files\\Everything\\es.exe',
             }
 
             # 检查热键是否发生变化

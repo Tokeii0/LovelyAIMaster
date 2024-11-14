@@ -2,6 +2,7 @@ from openai import AsyncOpenAI
 from typing import AsyncGenerator, Union
 import httpx
 import logging
+import traceback
 
 class AIClient:
     def __init__(self, api_key: str, base_url: str = None, model: str = "yi-lightning", 
@@ -45,22 +46,24 @@ class AIClient:
             
         self.client = AsyncOpenAI(**client_params)
         
-    async def get_response_stream(self, prompt: str, stream: bool = True) -> AsyncGenerator[str, None]:
+    async def get_response_stream(self, prompt: str, stream: bool = True, messages: list = None) -> AsyncGenerator[str, None]:
         """获取AI响应，支持流式和非流式模式"""
         try:
-            messages = [{
-                "role": "system",
-                "content": "请直接回答问题，不要使用markdown格式。"
-            }, {
-                "role": "user",
-                "content": prompt
-            }]
+            # 如果没有提供messages，使用默认的消息列表
+            if messages is None:
+                messages = [{
+                    "role": "system",
+                    "content": "请直接回答问题，不要使用markdown格式。"
+                }, {
+                    "role": "user",
+                    "content": prompt
+                }]
             
             # 打印实际调用参数
             call_params = {
                 "model": self.model,
                 "messages": messages,
-                "stream": stream  # 使用传入的stream参数
+                "stream": stream
             }
             
             if self.api_type == "Azure":
@@ -82,24 +85,36 @@ class AIClient:
             if stream:
                 # 流式模式
                 async for chunk in response:
-                    if chunk.choices[0].delta.content:
+                    # if (hasattr(chunk, 'choices') and len(chunk.choices) > 0):
+                    #     print(f"响应块的choices: {chunk.choices}")  # 添加调试输出
+                    if (hasattr(chunk, 'choices') and 
+                        len(chunk.choices) > 0 and 
+                        chunk.choices[0].delta and 
+                        hasattr(chunk.choices[0].delta, 'content') and 
+                        chunk.choices[0].delta.content):
                         yield chunk.choices[0].delta.content
                 print("流式模式结束")
             else:
                 # 非流式模式，直接返回完整响应
-                # 注意：非流式模式下，response不是异步迭代器，而是直接的响应对象
-                complete_response = response.choices[0].message.content
-                yield complete_response
+                if hasattr(response, 'choices') and len(response.choices) > 0:
+                    complete_response = response.choices[0].message.content
+                    yield complete_response
+                else:
+                    error_msg = "API响应格式错误：未找到有效的响应内容"
+                    print(error_msg)
+                    yield error_msg
                 print("非流式模式结束")
                     
         except Exception as e:
             error_msg = f"API调用错误: {str(e)}"
             print(error_msg)  # 在控制台打印错误
+            print("详细错误信息:")
+            traceback.print_exc()  # 打印详细的堆栈跟踪
             yield error_msg
 
-    async def get_response(self, prompt: str) -> str:
+    async def get_response(self, prompt: str, messages: list = None) -> str:
         """获取非流式响应的辅助方法"""
         response = ""
-        async for chunk in self.get_response_stream(prompt, stream=False):
+        async for chunk in self.get_response_stream(prompt, stream=False, messages=messages):
             response += chunk
         return response

@@ -26,6 +26,7 @@ class GlobalHotkey(QObject):
     screenshot_triggered = Signal()
     chat_triggered = Signal()
     hotkey_failed = Signal(str)
+    selection_to_input_triggered = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,7 +73,8 @@ class GlobalHotkey(QObject):
             try:
                 # 根据热键ID触发对应信号
                 if wparam == HOTKEY_SHOW:
-                    self.triggered.emit()
+                    # 当按下 Alt+1 时，触发selection_to_input_triggered信号
+                    self.selection_to_input_triggered.emit()
                 elif wparam == HOTKEY_SHOW2:
                     self.triggered.emit()
                 elif wparam == HOTKEY_SELECTION:
@@ -98,9 +100,10 @@ class GlobalHotkey(QObject):
                 (HOTKEY_SHOW2, self.hotkey2),
                 (HOTKEY_SELECTION, self.selection_hotkey),
                 (HOTKEY_SCREENSHOT, self.screenshot_hotkey),
-                (HOTKEY_CHAT, self.chat_hotkey)
+                (HOTKEY_CHAT, self.chat_hotkey),
             ]
             
+            print("开始注册热键...")  # 调试输出
             # 注册每个热键
             for hotkey_id, (modifier, key) in hotkeys:
                 try:
@@ -108,6 +111,8 @@ class GlobalHotkey(QObject):
                     mod_flag = self._get_modifier_flag(modifier)
                     # 转换键码
                     vk_code = self._get_virtual_key_code(key)
+                    
+                    print(f"注册热键: ID={hotkey_id}, 修饰键={modifier}({mod_flag}), 键={key}({vk_code})")  # 调试输出
                     
                     # 使用 user32.dll 直接注册热键
                     if ctypes.windll.user32.RegisterHotKey(self.hwnd, hotkey_id, mod_flag, vk_code):
@@ -119,6 +124,7 @@ class GlobalHotkey(QObject):
                         
                 except Exception as e:
                     print(f"注册热键 {modifier}+{key} 失败: {str(e)}")
+                    traceback.print_exc()
                     continue
                     
         except Exception as e:
@@ -141,14 +147,25 @@ class GlobalHotkey(QObject):
 
     def _get_virtual_key_code(self, key):
         """转换键名为虚拟键码"""
-        # 如果是数字键
-        if key.isdigit():
-            return ord(key)
-        # 如果是字母键
-        elif len(key) == 1 and key.isalpha():
-            return ord(key.upper())
-        # 其他特殊键可以继续添加
-        return 0
+        try:
+            # 如果是数字键
+            if key.isdigit():
+                return ord(key)  # 直接返回数字的ASCII码
+            # 如果是字母键
+            elif len(key) == 1 and key.isalpha():
+                return ord(key.upper())
+            # 如果是反引号
+            elif key == '`':
+                return 0xC0  # 反引号的虚拟键码
+            # 如果是其他特殊键，可以继续添加
+            
+            # 调试输出
+            print(f"键码转换: {key} -> {ord(key) if len(key) == 1 else 'unknown'}")
+            
+            return ord(key) if len(key) == 1 else 0
+        except Exception as e:
+            print(f"键码转换失败: {str(e)}")
+            return 0
 
     def _unregister_hotkeys(self):
         """取消注册的热键"""
@@ -207,3 +224,11 @@ class GlobalHotkey(QObject):
         if len(parts) != 2:
             return ('Alt', '1')
         return (parts[0].capitalize(), parts[1])
+
+    def _handle_selection_to_input(self):
+        """处理Alt+1热键"""
+        try:
+            self.selection_to_input_triggered.emit()
+        except Exception as e:
+            print(f"处理Alt+1热键失败: {str(e)}")
+            self.hotkey_failed.emit(str(e))
