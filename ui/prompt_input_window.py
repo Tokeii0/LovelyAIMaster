@@ -164,7 +164,7 @@ class PromptInputWindow(BaseWindow):
         """)
         
         # 发送按钮
-        self.send_button = QPushButton("✈️")
+        self.send_button = QPushButton("发送")
         self.send_button.setFixedSize(32, 32)
         self.send_button.setStyleSheet("""
             QPushButton {
