@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QSizeGrip, QHBoxLayout,QApplication, QComboBox, QLabel
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QSizeGrip, QHBoxLayout,QApplication, QComboBox, QLabel, QLineEdit
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor, QFont, 
-                          QCursor, QIcon, QDoubleValidator, QIntValidator)
+                          QCursor, QIcon, QDoubleValidator, QIntValidator, QKeyEvent)
 from .styles import SELECTION_SEARCH_STYLE
 import re
 import asyncio
@@ -74,22 +74,25 @@ class SelectionSearchDialog(QDialog):
         top_layout.addStretch()
         
         # 创建关闭按钮
-        close_button = QPushButton("×")
+        close_button = QLabel("×")
+        close_button.setObjectName("closeButton")
+        close_button.setFixedSize(30, 30)
+        close_button.setAlignment(Qt.AlignCenter)
+        close_button.mousePressEvent = lambda event: self.hide()
         close_button.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #666666;
-                border: none;
-                font-size: 16px;
-                padding: 5px 8px;
+            QLabel#closeButton {
+                background-color: rgba(255, 182, 193, 200);
+                color: rgba(139, 69, 19, 200);
+                border-radius: 15px;
+                font-size: 18px;
+                font-weight: bold;
+                border: 2px solid rgba(255, 192, 203, 150);
             }
-            QPushButton:hover {
-                background-color: #f44336;
-                color: white;
-                border-radius: 3px;
+            QLabel#closeButton:hover {
+                background-color: rgba(255, 160, 180, 230);
+                border: 2px solid rgba(255, 105, 180, 180);
             }
         """)
-        close_button.clicked.connect(self.hide)
         close_button.setCursor(Qt.PointingHandCursor)
         top_layout.addWidget(close_button)
         
@@ -162,6 +165,54 @@ class SelectionSearchDialog(QDialog):
         # 添加AI客户端
         self.ai_client = None
         
+        # 创建输入区域布局
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(8)
+        
+        # 创建输入框
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("按'↑'查看历史输入，按'ESC'关闭")
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-family: "Microsoft YaHei", Arial;
+                font-size: 14px;
+                color: #333;
+            }
+            QLineEdit:focus {
+                border: 2px solid #FFB6C1;
+                outline: none;
+            }
+        """)
+        
+        # 创建发送按钮
+        self.send_button = QPushButton("📤")
+        self.send_button.setFixedSize(36, 36)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FFB6C1;
+                color: #8B4513;
+                border: none;
+                border-radius: 18px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #FFA0B4;
+            }
+            QPushButton:pressed {
+                background-color: #FF91A4;
+            }
+        """)
+        self.send_button.setCursor(Qt.PointingHandCursor)
+        
+        # 添加到输入布局
+        input_layout.addWidget(self.input_field)
+        input_layout.addWidget(self.send_button)
+        
         # 创建底部按钮布局
         bottom_layout = QHBoxLayout()
         bottom_layout.addStretch()
@@ -184,8 +235,17 @@ class SelectionSearchDialog(QDialog):
         self.insert_button.clicked.connect(self.insert_to_cursor)
         bottom_layout.addWidget(self.insert_button)
         
-        # 将底部布局添加到主布局
+        # 将输入布局和底部布局添加到主布局
+        main_layout.addLayout(input_layout)
         main_layout.addLayout(bottom_layout)
+        
+        # 连接输入框事件
+        self.input_field.returnPressed.connect(self.send_query)
+        self.send_button.clicked.connect(self.send_query)
+        
+        # 历史记录
+        self.input_history = []
+        self.history_index = -1
     
     def set_ai_client(self, ai_client):
         """设置AI客户端"""
@@ -407,6 +467,64 @@ class SelectionSearchDialog(QDialog):
         except Exception as e:
             self.text_display.setPlainText(f"处理查询失败: {str(e)}")
             traceback.print_exc()
+    
+    def send_query(self):
+        """发送查询"""
+        query_text = self.input_field.text().strip()
+        if not query_text:
+            return
+            
+        # 添加到历史记录
+        if query_text not in self.input_history:
+            self.input_history.append(query_text)
+        self.history_index = -1
+        
+        # 清空输入框
+        self.input_field.clear()
+        
+        # 清理文本显示
+        self.text_display.clear()
+        self.current_cursor = None
+        
+        # 处理AI查询
+        try:
+            if not self.ai_client:
+                self.text_display.setPlainText("错误: AI客户端未初始化")
+                return
+                
+            # 创建异步任务处理AI请求
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._process_ai_query(query_text, query_text))
+            
+        except Exception as e:
+            self.text_display.setPlainText(f"处理查询失败: {str(e)}")
+            traceback.print_exc()
+    
+    def keyPressEvent(self, event):
+        """处理键盘事件"""
+        if event.key() == Qt.Key_Escape:
+            self.hide()
+        elif event.key() == Qt.Key_Up and self.input_field.hasFocus():
+            # 查看历史记录
+            if self.input_history:
+                if self.history_index == -1:
+                    self.history_index = len(self.input_history) - 1
+                elif self.history_index > 0:
+                    self.history_index -= 1
+                
+                if 0 <= self.history_index < len(self.input_history):
+                    self.input_field.setText(self.input_history[self.history_index])
+        elif event.key() == Qt.Key_Down and self.input_field.hasFocus():
+            # 向下浏览历史记录
+            if self.input_history and self.history_index != -1:
+                if self.history_index < len(self.input_history) - 1:
+                    self.history_index += 1
+                    self.input_field.setText(self.input_history[self.history_index])
+                else:
+                    self.history_index = -1
+                    self.input_field.clear()
+        else:
+            super().keyPressEvent(event)
     
     def insert_to_cursor(self):
         """将当前内容通过剪贴板插入到光标位置"""

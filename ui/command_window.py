@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTextEdit, QLabel,
                              QLineEdit, QPushButton, QHBoxLayout, QApplication, QComboBox,
                              QListWidget, QListWidgetItem)
 from PySide6.QtCore import Qt, Signal
@@ -9,21 +9,15 @@ import asyncio
 from services.ai_client import AIClient
 import json
 import qasync
+from .base_window import BaseWindow
 
-class ResultWindow(QMainWindow):
+class ResultWindow(BaseWindow):
     """结果展示窗口"""
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        
-        # 创建中心部件
-        central_widget = QWidget()
-        central_widget.setObjectName("centralWidget")
-        self.setCentralWidget(central_widget)
         
         # 主布局
-        layout = QVBoxLayout(central_widget)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 10)
         layout.setSpacing(8)
         
@@ -32,12 +26,8 @@ class ResultWindow(QMainWindow):
         top_layout.setSpacing(0)
         top_layout.addStretch()
         
-        # 关闭按钮
-        close_button = QPushButton("×")
-        close_button.setObjectName("closeButton")
-        close_button.setFixedSize(20, 20)
-        close_button.clicked.connect(self.hide)
-        top_layout.addWidget(close_button)
+        # 使用基类的关闭按钮
+        self.create_close_button(top_layout)
         layout.addLayout(top_layout)
         
         # 结果列表
@@ -45,54 +35,8 @@ class ResultWindow(QMainWindow):
         self.result_list.itemDoubleClicked.connect(self.execute_result)
         layout.addWidget(self.result_list)
         
-        # 设置窗口大小和样式
+        # 设置窗口大小
         self.resize(500, 400)
-        self.setStyleSheet("""
-            QWidget#centralWidget {
-                background-color: rgba(255, 255, 255, 90%);
-                border: 1px solid rgba(0, 0, 0, 15%);
-                border-radius: 10px;
-            }
-            
-            QListWidget {
-                background-color: transparent;
-                border: 1px solid rgba(0, 0, 0, 15%);
-                border-radius: 5px;
-                padding: 5px;
-                font-size: 14px;
-            }
-            
-            QListWidget::item {
-                padding: 8px;
-                border-radius: 5px;
-            }
-            
-            QListWidget::item:hover {
-                background-color: rgba(74, 144, 226, 15%);
-            }
-            
-            QListWidget::item:selected {
-                background-color: rgba(74, 144, 226, 30%);
-            }
-            
-            QPushButton#closeButton {
-                background-color: transparent;
-                color: #666;
-                font-size: 14px;
-                padding: 0px;
-                min-width: 20px;
-                min-height: 20px;
-                border-radius: 10px;
-            }
-            
-            QPushButton#closeButton:hover {
-                background-color: rgba(255, 68, 68, 90%);
-                color: white;
-            }
-        """)
-        
-        # 添加拖动支持
-        self.drag_position = None
 
     def set_results(self, results):
         """设置结果列表"""
@@ -114,20 +58,7 @@ class ResultWindow(QMainWindow):
         except Exception as e:
             print(f"执行结果失败: {str(e)}")
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
 
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton and self.drag_position is not None:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_position = None
-            event.accept()
 
     def showEvent(self, event):
         # 在显示窗口时居中显示
@@ -138,24 +69,17 @@ class ResultWindow(QMainWindow):
         )
         super().showEvent(event)
 
-class CommandWindow(QMainWindow):
-    command_executed = Signal(str)
+class CommandWindow(BaseWindow):
+    command_executed = Signal()
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
         
         # 初始化 AI 客户端
         self.init_ai_client()
         
-        # 创建中心部件
-        central_widget = QWidget()
-        central_widget.setObjectName("centralWidget")
-        self.setCentralWidget(central_widget)
-        
         # 主布局
-        layout = QVBoxLayout(central_widget)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 10)
         layout.setSpacing(8)
         
@@ -164,12 +88,8 @@ class CommandWindow(QMainWindow):
         top_layout.setSpacing(0)
         top_layout.addStretch()
         
-        # 关闭按钮
-        close_button = QPushButton("×")
-        close_button.setObjectName("closeButton")
-        close_button.setFixedSize(20, 20)
-        close_button.clicked.connect(self.hide)
-        top_layout.addWidget(close_button)
+        # 使用基类的关闭按钮
+        self.create_close_button(top_layout)
         layout.addLayout(top_layout)
         
         # 提示词下拉框
@@ -192,63 +112,7 @@ class CommandWindow(QMainWindow):
         layout.addWidget(submit_button)
         
         # 设置窗口大小
-        self.resize(400, 160)
-        
-        # 添加拖动支持
-        self.drag_position = None
-        
-        # 设置窗口样式
-        self.setStyleSheet("""
-            QWidget#centralWidget {
-                background-color: rgba(255, 255, 255, 90%);
-                border: 1px solid rgba(0, 0, 0, 15%);
-                border-radius: 10px;
-            }
-            
-            QLineEdit {
-                padding: 8px;
-                font-size: 14px;
-                border: 1px solid rgba(0, 0, 0, 15%);
-                border-radius: 5px;
-                background-color: white;
-            }
-            
-            QComboBox {
-                padding: 8px;
-                font-size: 14px;
-                border: 1px solid rgba(0, 0, 0, 15%);
-                border-radius: 5px;
-                background-color: white;
-            }
-            
-            QPushButton {
-                background-color: rgba(74, 144, 226, 90%);
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            
-            QPushButton:hover {
-                background-color: rgba(53, 122, 189, 90%);
-            }
-            
-            QPushButton#closeButton {
-                background-color: transparent;
-                color: #666;
-                font-size: 14px;
-                padding: 0px;
-                min-width: 20px;
-                min-height: 20px;
-                border-radius: 10px;
-            }
-            
-            QPushButton#closeButton:hover {
-                background-color: rgba(255, 68, 68, 90%);
-                color: white;
-            }
-        """)
+        self.resize(400, 200)
         
         # 创建结果窗口
         self.result_window = ResultWindow()
@@ -372,23 +236,7 @@ class CommandWindow(QMainWindow):
             print(f"执行命令失败: {str(e)}")
             self.command_executed.emit(f"执行失败: {str(e)}")
 
-    def mousePressEvent(self, event):
-        """鼠标按下事件"""
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
 
-    def mouseMoveEvent(self, event):
-        """鼠标移动事件"""
-        if event.buttons() & Qt.LeftButton and self.drag_position is not None:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        """鼠标释放事件"""
-        if event.button() == Qt.LeftButton:
-            self.drag_position = None
-            event.accept()
 
     def showEvent(self, event):
         # 在显示窗口时居中显示

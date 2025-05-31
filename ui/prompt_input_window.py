@@ -1,14 +1,12 @@
 import json
 import os
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
-    QLabel, QComboBox, QCheckBox
-)
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, QComboBox, QCheckBox, QLineEdit
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDoubleValidator, QIntValidator
-from .styles import MAIN_STYLE, CHECKBOX_STYLE
+from PySide6.QtGui import QDoubleValidator, QIntValidator, QKeyEvent
+from .styles import CHECKBOX_STYLE
+from .base_window import BaseWindow
 
-class PromptInputWindow(QWidget):
+class PromptInputWindow(BaseWindow):
     """独立的提示词输入窗口组件"""
     
     # 信号定义
@@ -17,230 +15,213 @@ class PromptInputWindow(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setFixedSize(400, 120)
+        
+        # 设置窗口半透明效果
+        self.setStyleSheet("""
+            QWidget {
+                background: rgba(255, 255, 255, 200);
+                border-radius: 20px;
+                border: 2px solid rgba(0, 184, 148, 150);
+            }
+        """)
+        
+        # 设置窗口透明度
+        self.setWindowOpacity(0.92)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        
+        # 启用Windows模糊效果（简化版本）
+        try:
+            import platform
+            if platform.system() == "Windows":
+                # 使用Qt的图形效果来模拟模糊
+                from PySide6.QtWidgets import QGraphicsBlurEffect
+                
+                # 为窗口添加模糊效果
+                blur_effect = QGraphicsBlurEffect()
+                blur_effect.setBlurRadius(15)
+                # self.setGraphicsEffect(blur_effect)  # 暂时注释，可能影响性能
+                
+                print("已启用半透明效果")
+        except Exception as e:
+            print(f"模糊效果设置失败: {e}")
+        
+        # 输入历史记录
+        self.input_history = []
+        self.history_index = -1
+        
         self.init_ui()
         self.load_prompts()
         
     def init_ui(self):
         """初始化用户界面"""
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-        self.setStyleSheet(self.get_window_style())
         self.setWindowTitle("提示词输入")
         
         # 主布局
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 5, 10, 10)
-        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(8, 5, 8, 8)
+        main_layout.setSpacing(8)
         
-        # 顶部布局和关闭按钮
+        # 顶部拖动区域和关闭按钮
         top_layout = QHBoxLayout()
         top_layout.setSpacing(0)
-        top_layout.addStretch()
         
-        # 圆形关闭标签
-        close_button = QLabel("×")
-        close_button.setObjectName("closeButton")
-        close_button.setFixedSize(30, 30)
-        close_button.setAlignment(Qt.AlignCenter)
-        close_button.mousePressEvent = lambda event: self.close_window()
-        close_button.setStyleSheet("""
-            QLabel#closeButton {
-                background-color: rgba(255, 182, 193, 200);
-                color: rgba(139, 69, 19, 200);
-                border-radius: 15px;
-                font-size: 18px;
+        # 添加拖动区域标题
+        drag_label = QLabel("AI助手")
+        drag_label.setStyleSheet("""
+            QLabel {
+                background: rgba(0, 184, 148, 100);
+                color: rgba(255, 255, 255, 220);
+                font-family: "Microsoft YaHei";
+                font-size: 11px;
                 font-weight: bold;
-                border: 2px solid rgba(255, 192, 203, 150);
-            }
-            QLabel#closeButton:hover {
-                background-color: rgba(255, 160, 180, 230);
-                border: 2px solid rgba(255, 105, 180, 180);
+                padding: 4px 12px;
+                border-radius: 8px;
+                margin-right: 8px;
             }
         """)
-        top_layout.addWidget(close_button)
+        top_layout.addWidget(drag_label)
+        top_layout.addStretch()
+        
+        # 使用基类的关闭按钮
+        self.create_close_button(top_layout)
         main_layout.addLayout(top_layout)
         
-        # 提示词下拉框
+        # 提示词下拉框（移除标签）
         prompts_layout = QHBoxLayout()
-        prompts_label = QLabel("预设提示词:")
+        prompts_layout.setSpacing(8)
         self.prompts_combo = QComboBox()
+        self.prompts_combo.setStyleSheet("""
+            QComboBox {
+                background: rgba(255, 255, 255, 150);
+                border: 1px solid rgba(0, 184, 148, 100);
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-family: "Microsoft YaHei", Arial;
+                font-size: 11px;
+                font-weight: 400;
+                color: #2d3436;
+                min-width: 180px;
+            }
+            QComboBox:hover {
+                border: 1px solid rgba(0, 184, 148, 150);
+                background: rgba(255, 255, 255, 180);
+            }
+            QComboBox:focus {
+                border: 2px solid rgba(0, 184, 148, 200);
+                background: rgba(255, 255, 255, 200);
+                outline: none;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+                border-radius: 6px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid rgba(0, 184, 148, 180);
+                margin-right: 6px;
+            }
+        """)
         self.prompts_combo.currentIndexChanged.connect(self.on_prompt_selected)
-        prompts_layout.addWidget(prompts_label)
         prompts_layout.addWidget(self.prompts_combo)
+        prompts_layout.addStretch()
         main_layout.addLayout(prompts_layout)
         
+        # 输入区域布局
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(8)
+        
         # 输入框
-        self.input_text = QTextEdit()
-        self.input_text.setPlaceholderText("请输入提示词...")
-        self.input_text.setMinimumHeight(100)
-        self.input_text.setMaximumHeight(150)
-        main_layout.addWidget(self.input_text)
-        
-        # 参数设置和按钮布局
-        button_layout = QHBoxLayout()
-        
-        # 温度设置
-        temp_layout = QHBoxLayout()
-        temp_label = QLabel("个性度:")
-        self.temperature_combo = QComboBox()
-        self.temperature_combo.setEditable(True)
-        self.temperature_combo.addItems(['0.0', '0.3', '0.5', '0.7', '0.9', '1.0'])
-        self.temperature_combo.setCurrentText('0.7')
-        self.temperature_combo.setValidator(QDoubleValidator(0.0, 2.0, 2))
-        self.temperature_combo.setMinimumWidth(60)
-        self.temperature_combo.setFixedWidth(60)
-        temp_layout.addWidget(temp_label)
-        temp_layout.addWidget(self.temperature_combo)
-        button_layout.addLayout(temp_layout)
-        
-        # 最大令牌数设置
-        tokens_layout = QHBoxLayout()
-        tokens_label = QLabel("词元:")
-        self.max_tokens_combo = QComboBox()
-        self.max_tokens_combo.setEditable(True)
-        self.max_tokens_combo.addItems(['1000', '2000', '4000', '8000', '16000'])
-        self.max_tokens_combo.setCurrentText('2000')
-        self.max_tokens_combo.setValidator(QIntValidator(1, 32000))
-        self.max_tokens_combo.setMinimumWidth(70)
-        self.max_tokens_combo.setFixedWidth(70)
-        tokens_layout.addWidget(tokens_label)
-        tokens_layout.addWidget(self.max_tokens_combo)
-        button_layout.addLayout(tokens_layout)
-        
-        # 间距
-        button_layout.addSpacing(5)
-        
-        # 过滤Markdown复选框
-        self.filter_markdown = QCheckBox("过滤Markdown格式")
-        self.filter_markdown.setStyleSheet(CHECKBOX_STYLE)
-        button_layout.addWidget(self.filter_markdown)
-        
-        button_layout.addStretch()
+        from PySide6.QtWidgets import QLineEdit
+        self.input_text = QLineEdit()
+        self.input_text.setPlaceholderText("按'↑'查看历史输入，按'ESC'关闭")
+        self.input_text.setStyleSheet("""
+            QLineEdit {
+                background: rgba(255, 255, 255, 150);
+                border: 1px solid rgba(0, 184, 148, 100);
+                border-radius: 12px;
+                padding: 8px 14px;
+                font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+                font-size: 12px;
+                font-weight: 400;
+                color: #2d3436;
+                line-height: 1.3;
+                selection-background-color: rgba(0, 184, 148, 80);
+            }
+            QLineEdit:hover {
+                border: 1px solid rgba(0, 184, 148, 150);
+                background: rgba(255, 255, 255, 180);
+            }
+            QLineEdit:focus {
+                border: 2px solid rgba(0, 184, 148, 200);
+                background: rgba(255, 255, 255, 200);
+                outline: none;
+            }
+        """)
         
         # 发送按钮
-        self.send_button = QPushButton("发送")
+        self.send_button = QPushButton("✈️")
+        self.send_button.setFixedSize(32, 32)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #00b894, 
+                    stop:1 #00a085);
+                color: white;
+                border: none;
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: 600;
+                padding: 4px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #00d2a4, 
+                    stop:1 #00b894);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #009975, 
+                    stop:1 #008866);
+            }
+        """)
         self.send_button.clicked.connect(self.submit_prompt)
-        button_layout.addWidget(self.send_button)
         
-        main_layout.addLayout(button_layout)
+        # 添加到输入布局
+        input_layout.addWidget(self.input_text)
+        input_layout.addWidget(self.send_button)
+        
+        main_layout.addLayout(input_layout)
+        
+        # 隐藏的参数设置（保持功能但不显示）
+        self.temperature_combo = QComboBox()
+        self.temperature_combo.addItems(['0.0', '0.3', '0.5', '0.7', '0.9', '1.0'])
+        self.temperature_combo.setCurrentText('0.7')
+        self.temperature_combo.hide()
+        
+        self.max_tokens_combo = QComboBox()
+        self.max_tokens_combo.addItems(['1000', '2000', '4000', '8000', '16000'])
+        self.max_tokens_combo.setCurrentText('2000')
+        self.max_tokens_combo.hide()
+        
+        self.filter_markdown = QCheckBox()
+        self.filter_markdown.hide()
         
         # 设置窗口大小
-        self.resize(350, 250)
+        self.resize(400, 120)
         
-        # 设置鼠标跟踪
-        self.setMouseTracking(True)
-        self.drag_position = None
+        # 历史记录
+        self.input_history = []
+        self.history_index = -1
+        
+        # 连接输入框事件
+        self.input_text.returnPressed.connect(self.submit_prompt)
     
-    def get_window_style(self):
-        """获取窗口样式 - 樱花粉配色"""
-        return """
-        QWidget {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(255, 240, 245, 250),
-                stop:1 rgba(255, 228, 225, 240));
-            border: 2px solid rgba(255, 182, 193, 180);
-            border-radius: 15px;
-        }
-        QTextEdit {
-            background-color: rgba(255, 250, 250, 250);
-            border: 2px solid rgba(255, 192, 203, 150);
-            border-radius: 8px;
-            padding: 8px;
-            font-size: 14px;
-            color: rgba(139, 69, 19, 200);
-            selection-background-color: rgba(255, 105, 180, 150);
-            selection-color: white;
-        }
-        QTextEdit:focus {
-            border: 2px solid rgba(255, 105, 180, 200);
-        }
-        QComboBox {
-            background-color: rgba(255, 250, 250, 250);
-            border: 2px solid rgba(255, 192, 203, 150);
-            border-radius: 6px;
-            padding: 4px 6px;
-            font-size: 12px;
-            min-height: 25px;
-            min-width: 70px;
-            color: rgba(139, 69, 19, 200);
-        }
-        QComboBox[editable="true"] {
-            padding: 1px 6px;
-        }
-        QComboBox QLineEdit {
-            border: none;
-            padding: 1px 2px;
-            min-width: 60px;
-            color: rgba(139, 69, 19, 200);
-        }
-        QComboBox:hover {
-            border: 2px solid rgba(255, 105, 180, 200);
-        }
-        QComboBox:focus {
-            border: 2px solid rgba(255, 105, 180, 220);
-        }
-        QComboBox::drop-down {
-            border: none;
-            width: 20px;
-        }
-        QComboBox::down-arrow {
-            image: none;
-            border: none;
-        }
-        QComboBox QAbstractItemView {
-            background-color: rgba(255, 250, 250, 250);
-            border: 1px solid rgba(255, 192, 203, 180);
-            selection-background-color: rgba(255, 105, 180, 150);
-            selection-color: white;
-            border-radius: 4px;
-        }
-        QLabel {
-            font-size: 12px;
-            color: rgba(139, 69, 19, 200);
-            font-weight: 500;
-            padding-right: 4px;
-            min-width: 40px;
-        }
-        QPushButton {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(255, 182, 193, 220),
-                stop:1 rgba(255, 160, 180, 220));
-            color: white;
-            border: 2px solid rgba(255, 192, 203, 150);
-            border-radius: 8px;
-            padding: 8px 16px;
-            font-size: 12px;
-            font-weight: 500;
-            min-width: 60px;
-        }
-        QPushButton:hover {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(255, 160, 180, 240),
-                stop:1 rgba(255, 140, 160, 240));
-            border: 2px solid rgba(255, 105, 180, 180);
-        }
-        QPushButton:pressed {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(255, 140, 160, 240),
-                stop:1 rgba(255, 120, 140, 240));
-            border: 2px solid rgba(255, 105, 180, 200);
-        }
-        QCheckBox {
-            color: rgba(139, 69, 19, 180);
-            font-size: 12px;
-            spacing: 5px;
-        }
-        QCheckBox::indicator {
-            width: 15px;
-            height: 15px;
-            border: 1px solid rgba(255, 192, 203, 180);
-            background: rgba(255, 250, 250, 200);
-            border-radius: 3px;
-        }
-        QCheckBox::indicator:checked {
-            border: 1px solid rgba(255, 105, 180, 200);
-            background: rgba(255, 182, 193, 200);
-        }
-        """
+
         
     def load_prompts(self):
         """加载预设提示词到下拉框"""
@@ -295,13 +276,18 @@ class PromptInputWindow(QWidget):
     
     def submit_prompt(self):
         """提交提示词"""
-        user_input = self.input_text.toPlainText().strip()
+        user_input = self.input_text.text().strip()
         if not user_input:
             print("输入为空，跳过处理")
             return
+        
+        # 添加到历史记录
+        if user_input not in self.input_history:
+            self.input_history.append(user_input)
+        self.history_index = -1
             
-        # 获取预设提示词内容
-        preset_content = self.prompts_combo.currentData()
+        # 获取预设提示词内容（虽然现在隐藏了，但保持兼容性）
+        preset_content = self.prompts_combo.currentData() if hasattr(self.prompts_combo, 'currentData') else None
         final_prompt = user_input
         if preset_content:
             final_prompt = preset_content.replace("{input}", user_input)
@@ -317,6 +303,32 @@ class PromptInputWindow(QWidget):
         
         # 发送信号
         self.prompt_submitted.emit(final_prompt, temperature, max_tokens, filter_markdown)
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """处理键盘事件"""
+        if event.key() == Qt.Key_Escape:
+            self.hide()
+        elif event.key() == Qt.Key_Up:
+            # 上箭头：查看历史记录
+            if self.input_history:
+                if self.history_index == -1:
+                    self.history_index = len(self.input_history) - 1
+                elif self.history_index > 0:
+                    self.history_index -= 1
+                self.input_text.setText(self.input_history[self.history_index])
+        elif event.key() == Qt.Key_Down:
+            # 下箭头：查看历史记录
+            if self.input_history and self.history_index != -1:
+                if self.history_index < len(self.input_history) - 1:
+                    self.history_index += 1
+                    self.input_text.setText(self.input_history[self.history_index])
+                else:
+                    self.history_index = -1
+                    self.input_text.clear()
+        elif event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
+            self.submit_prompt()
+        else:
+            super().keyPressEvent(event)
     
     def _get_temperature_value(self):
         """获取温度值"""
@@ -342,57 +354,16 @@ class PromptInputWindow(QWidget):
             print(f"token值解析失败: {e}，使用默认值")
         return 2000  # 默认值
     
-    def close_window(self):
-        """关闭窗口"""
-        self.hide()
-        self.window_closed.emit()
-    
     def show_at_cursor(self):
         """在光标位置显示窗口"""
-        from PySide6.QtGui import QCursor
-        from PySide6.QtWidgets import QApplication
-        
-        cursor = QCursor.pos()
-        window_x = cursor.x() + 10
-        window_y = cursor.y() + 10
-        screen = QApplication.primaryScreen().geometry()
-        
-        # 确保窗口不会超出屏幕边界
-        if window_x + self.width() > screen.width():
-            window_x = screen.width() - self.width()
-        if window_y + self.height() > screen.height():
-            window_y = screen.height() - self.height()
-            
-        self.move(window_x, window_y)
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        super().show_at_cursor()
         self.input_text.setFocus()
     
     def refresh_prompts(self):
         """刷新提示词列表"""
         self.load_prompts()
     
-    def mousePressEvent(self, event):
-        """鼠标按下事件 - 用于拖拽窗口"""
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-    
-    def mouseMoveEvent(self, event):
-        """鼠标移动事件 - 拖拽窗口"""
-        if event.buttons() == Qt.LeftButton and self.drag_position is not None:
-            self.move(event.globalPosition().toPoint() - self.drag_position)
-            event.accept()
-    
-    def keyPressEvent(self, event):
-        """键盘事件处理"""
-        if event.key() == Qt.Key_Escape:
-            self.close_window()
-        elif event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
-            self.submit_prompt()
-        else:
-            super().keyPressEvent(event)
+
     
     def show_window(self):
         """显示窗口"""

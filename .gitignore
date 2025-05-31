@@ -1,2 +1,3 @@
 __pycache__
 config/config copy.json
+plugins/__pycache__/*

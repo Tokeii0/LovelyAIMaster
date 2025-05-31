@@ -90,9 +90,25 @@ class InputWindow(QMainWindow):
         top_layout = QHBoxLayout()
         top_layout.setSpacing(0)
         top_layout.addStretch()
-        close_button = QPushButton("×")
+        close_button = QLabel("×")
         close_button.setObjectName("closeButton")
-        close_button.clicked.connect(self.hide)
+        close_button.setFixedSize(30, 30)
+        close_button.setAlignment(Qt.AlignCenter)
+        close_button.mousePressEvent = lambda event: self.hide()
+        close_button.setStyleSheet("""
+            QLabel#closeButton {
+                background-color: rgba(255, 182, 193, 200);
+                color: rgba(139, 69, 19, 200);
+                border-radius: 15px;
+                font-size: 18px;
+                font-weight: bold;
+                border: 2px solid rgba(255, 192, 203, 150);
+            }
+            QLabel#closeButton:hover {
+                background-color: rgba(255, 160, 180, 230);
+                border: 2px solid rgba(255, 105, 180, 180);
+            }
+        """)
         top_layout.addWidget(close_button)
         main_layout.addLayout(top_layout)
         # 流模式设置
@@ -243,7 +259,7 @@ class InputWindow(QMainWindow):
             print(f"处理提示词时发生错误: {e}")
             traceback.print_exc()
     
-    async def get_ai_response_with_filter(self, prompt: str, temperature: float = None, max_tokens: int = None, filter_markdown: bool = False):
+    async def get_ai_response_with_filter(self, prompt: str, temperature: float = None, max_tokens: int = None, filter_markdown: bool = None):
         """处理流式响应（带过滤选项）"""
         response_text = ""
         self.should_stop = False
@@ -260,7 +276,9 @@ class InputWindow(QMainWindow):
                     print("用户停止了响应")
                     break
                     
-                if filter_markdown:
+                # 如果明确指定了filter_markdown参数，使用该参数；否则使用界面复选框状态
+                should_filter = filter_markdown if filter_markdown is not None else self.filter_markdown.isChecked()
+                if should_filter:
                     text = remove_markdown(text)
                     
                 response_text += text
@@ -280,7 +298,7 @@ class InputWindow(QMainWindow):
             
         return response_text
     
-    async def _get_non_stream_response_with_filter(self, prompt, temperature, max_tokens, filter_markdown):
+    async def _get_non_stream_response_with_filter(self, prompt, temperature, max_tokens, filter_markdown=None):
         """获取非流式响应（带过滤选项）"""
         try:
             response = await self.ai_client.get_response(
@@ -288,50 +306,21 @@ class InputWindow(QMainWindow):
                 temperature=temperature, 
                 max_tokens=max_tokens
             )
-            if filter_markdown:
+            # 如果明确指定了filter_markdown参数，使用该参数；否则使用界面复选框状态
+            should_filter = filter_markdown if filter_markdown is not None else self.filter_markdown.isChecked()
+            if should_filter:
                 response = remove_markdown(response)
             self.insert_text_to_cursor(response, stream_mode=False)
+            return response
         except Exception as e:
             print(f"获取非流式响应失败: {e}")
             error_msg = f"获取响应失败: {str(e)}"
             self.insert_text_to_cursor(error_msg, stream_mode=False)
+            return error_msg
 
     async def get_ai_response(self, prompt: str, temperature: float = None, max_tokens: int = None):
-        """处理流式响应"""
-        response_text = ""
-        self.should_stop = False
-        self.floating_stop_button.show_at_cursor()
-        
-        try:
-            async for text in self.ai_client.get_response_stream(
-                prompt, 
-                stream=True,
-                temperature=temperature,
-                max_tokens=max_tokens
-            ):
-                if self.should_stop:
-                    print("用户停止了响应")
-                    break
-                    
-                if self.filter_markdown.isChecked():
-                    text = remove_markdown(text)
-                    
-                response_text += text
-                self.insert_text_to_cursor(text)
-                
-        except asyncio.CancelledError:
-            print("AI响应被取消")
-        except ConnectionError as e:
-            print(f"网络连接错误: {e}")
-            response_text = f"网络连接失败: {str(e)}"
-        except Exception as e:
-            print(f"获取AI响应时发生错误: {e}")
-            traceback.print_exc()
-            response_text = f"获取响应失败: {str(e)}"
-        finally:
-            self.floating_stop_button.hide()
-            
-        return response_text
+        """处理流式响应（兼容性方法，调用统一的带过滤选项的方法）"""
+        return await self.get_ai_response_with_filter(prompt, temperature, max_tokens, filter_markdown=None)
 
     def insert_text_to_cursor(self, text, stream_mode=True):
         """插入文本到光标位置，支持流式和非流式模式，结合多种方法"""
@@ -673,10 +662,8 @@ class InputWindow(QMainWindow):
             if selected_text and selected_text.strip():
                 self.prompt_input_window.set_input_text(selected_text)
             
-            # 显示提示词输入窗口
-            self.prompt_input_window.show()
-            self.prompt_input_window.raise_()
-            self.prompt_input_window.activateWindow()
+            # 显示提示词输入窗口在鼠标位置
+            self.prompt_input_window.show_at_cursor()
             
             # 如果之前的窗口还存在，尝试恢复其焦点状态
             if current_hwnd and win32gui.IsWindow(current_hwnd):

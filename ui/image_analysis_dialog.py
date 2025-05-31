@@ -29,9 +29,25 @@ class ImageAnalysisDialog(QDialog):
         
         
         # 添加关闭按钮
-        close_button = QPushButton("×")
+        close_button = QLabel("×")
         close_button.setObjectName("closeButton")
-        close_button.clicked.connect(self.hide)
+        close_button.setFixedSize(30, 30)
+        close_button.setAlignment(Qt.AlignCenter)
+        close_button.mousePressEvent = lambda event: self.hide()
+        close_button.setStyleSheet("""
+            QLabel#closeButton {
+                background-color: rgba(255, 182, 193, 200);
+                color: rgba(139, 69, 19, 200);
+                border-radius: 15px;
+                font-size: 18px;
+                font-weight: bold;
+                border: 2px solid rgba(255, 192, 203, 150);
+            }
+            QLabel#closeButton:hover {
+                background-color: rgba(255, 160, 180, 230);
+                border: 2px solid rgba(255, 105, 180, 180);
+            }
+        """)
         top_layout.addWidget(close_button)
         
         main_layout.addLayout(top_layout)
