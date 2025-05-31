@@ -151,19 +151,19 @@ class SelectionKeywordsWindow(QMainWindow):
         """加载关键词列表"""
         try:
             # 检查文件是否存在
-            if not os.path.exists('selection_keywords.json'):
+            if not os.path.exists('config/selection_keywords.json'):
                 default_keywords = [
                     {
                         "title": "翻译成中文",
                         "prompt": "请将以下文本翻译成中文："
                     }
                 ]
-                with open('selection_keywords.json', 'w', encoding='utf-8') as f:
+                with open('config/selection_keywords.json', 'w', encoding='utf-8') as f:
                     json.dump(default_keywords, f, ensure_ascii=False, indent=4)
                 self.keywords = default_keywords
             else:
                 # 读取关键词文件
-                with open('selection_keywords.json', 'r', encoding='utf-8') as f:
+                with open('config/selection_keywords.json', 'r', encoding='utf-8') as f:
                     self.keywords = json.load(f)
             
             # 更新列表显示
@@ -178,7 +178,7 @@ class SelectionKeywordsWindow(QMainWindow):
     def save_keywords(self):
         """保存关键词到文件"""
         try:
-            with open('selection_keywords.json', 'w', encoding='utf-8') as f:
+            with open('config/selection_keywords.json', 'w', encoding='utf-8') as f:
                 json.dump(self.keywords, f, ensure_ascii=False, indent=4)
         except Exception as e:
             traceback.print_exc() 

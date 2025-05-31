@@ -112,16 +112,16 @@ class PromptsWindow(QMainWindow):
                 self.prompts = []
             
             # 使用临时文件保存
-            temp_file = 'prompts.json.tmp'
+            temp_file = 'config/prompts.json.tmp'
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(self.prompts, f, indent=4, ensure_ascii=False)
             
             # 成功写入后替换原文件
             if os.path.exists(temp_file):
-                if os.path.exists('prompts.json'):
-                    os.replace(temp_file, 'prompts.json')
+                if os.path.exists('config/prompts.json'):
+                    os.replace(temp_file, 'config/prompts.json')
                 else:
-                    os.rename(temp_file, 'prompts.json')
+                    os.rename(temp_file, 'config/prompts.json')
             
             # 发送更新信号
             self.prompts_updated.emit()
@@ -182,7 +182,7 @@ class PromptsWindow(QMainWindow):
         """加载提示词列表"""
         try:
             # 检查文件是否存在
-            if not os.path.exists('prompts.json'):
+            if not os.path.exists('config/prompts.json'):
                 #print("提示词文件不存在，创建默认文件")
                 default_prompts = [
                     {
@@ -190,12 +190,12 @@ class PromptsWindow(QMainWindow):
                         "content": "这是一个示例提示词"
                     }
                 ]
-                with open('prompts.json', 'w', encoding='utf-8') as f:
+                with open('config/prompts.json', 'w', encoding='utf-8') as f:
                     json.dump(default_prompts, f, ensure_ascii=False, indent=4)
                 self.prompts = default_prompts
             else:
                 # 读取提示词文件
-                with open('prompts.json', 'r', encoding='utf-8') as f:
+                with open('config/prompts.json', 'r', encoding='utf-8') as f:
                     self.prompts = json.load(f)
             
             # 更新列表显示

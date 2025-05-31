@@ -54,8 +54,8 @@ class SelectionMenu(QMenu):
     def load_keywords(self):
         """加载关键词"""
         try:
-            if os.path.exists('selection_keywords.json'):
-                with open('selection_keywords.json', 'r', encoding='utf-8') as f:
+            if os.path.exists('config/selection_keywords.json'):
+                with open('config/selection_keywords.json', 'r', encoding='utf-8') as f:
                     self.keywords = json.load(f)
         except Exception as e:
             traceback.print_exc()

@@ -275,8 +275,8 @@ class CommandWindow(QMainWindow):
     def load_prompts(self):
         """加载提示词列表"""
         try:
-            if os.path.exists('prompts.json'):
-                with open('prompts.json', 'r', encoding='utf-8') as f:
+            if os.path.exists('config/prompts.json'):
+                with open('config/prompts.json', 'r', encoding='utf-8') as f:
                     prompts = json.load(f)
                     for prompt in prompts:
                         self.prompt_combo.addItem(prompt['title'], prompt['content'])

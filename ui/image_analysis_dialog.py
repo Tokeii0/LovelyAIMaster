@@ -267,17 +267,17 @@ class ImageAnalysisDialog(QDialog):
     def load_prompts(self):
         """加载提示词到下拉框"""
         try:
-            if not os.path.exists('prompts.json'):
+            if not os.path.exists('config/prompts.json'):
                 default_prompts = [
                     {
                         "title": "示例提示词",
                         "content": "这是一个示例提示词"
                     }
                 ]
-                with open('prompts.json', 'w', encoding='utf-8') as f:
+                with open('config/prompts.json', 'w', encoding='utf-8') as f:
                     json.dump(default_prompts, f, ensure_ascii=False, indent=4)
             
-            with open('prompts.json', 'r', encoding='utf-8') as f:
+            with open('config/prompts.json', 'r', encoding='utf-8') as f:
                 prompts = json.load(f)
                 self.prompts_combo.clear()
                 self.prompts_combo.addItem("选择提示词...")

@@ -36,22 +36,24 @@ class PromptInputWindow(QWidget):
         top_layout.setSpacing(0)
         top_layout.addStretch()
         
-        # 圆形关闭按钮
+        # 圆形关闭标签
         close_button = QLabel("×")
         close_button.setObjectName("closeButton")
-        close_button.setFixedSize(25, 25)
+        close_button.setFixedSize(30, 30)
         close_button.setAlignment(Qt.AlignCenter)
         close_button.mousePressEvent = lambda event: self.close_window()
         close_button.setStyleSheet("""
             QLabel#closeButton {
-                background-color: rgba(255, 100, 100, 180);
-                color: white;
-                border-radius: 12px;
-                font-size: 16px;
+                background-color: rgba(255, 182, 193, 200);
+                color: rgba(139, 69, 19, 200);
+                border-radius: 15px;
+                font-size: 18px;
                 font-weight: bold;
+                border: 2px solid rgba(255, 192, 203, 150);
             }
             QLabel#closeButton:hover {
-                background-color: rgba(255, 80, 80, 220);
+                background-color: rgba(255, 160, 180, 230);
+                border: 2px solid rgba(255, 105, 180, 180);
             }
         """)
         top_layout.addWidget(close_button)
@@ -129,35 +131,37 @@ class PromptInputWindow(QWidget):
         self.drag_position = None
     
     def get_window_style(self):
-        """获取窗口样式"""
+        """获取窗口样式 - 樱花粉配色"""
         return """
         QWidget {
-            background-color: rgba(255, 255, 255, 240);
-            border: 2px solid rgba(200, 200, 200, 180);
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba(255, 240, 245, 250),
+                stop:1 rgba(255, 228, 225, 240));
+            border: 2px solid rgba(255, 182, 193, 180);
             border-radius: 15px;
         }
         QTextEdit {
-            background-color: rgba(250, 250, 250, 250);
-            border: 2px solid rgba(230, 230, 230, 150);
+            background-color: rgba(255, 250, 250, 250);
+            border: 2px solid rgba(255, 192, 203, 150);
             border-radius: 8px;
             padding: 8px;
             font-size: 14px;
-            color: #2c3e50;
-            selection-background-color: #3498db;
+            color: rgba(139, 69, 19, 200);
+            selection-background-color: rgba(255, 105, 180, 150);
             selection-color: white;
         }
         QTextEdit:focus {
-            border: 2px solid rgba(52, 152, 219, 200);
+            border: 2px solid rgba(255, 105, 180, 200);
         }
         QComboBox {
-            background-color: rgba(255, 255, 255, 250);
-            border: 2px solid rgba(230, 230, 230, 150);
+            background-color: rgba(255, 250, 250, 250);
+            border: 2px solid rgba(255, 192, 203, 150);
             border-radius: 6px;
             padding: 4px 6px;
             font-size: 12px;
             min-height: 25px;
             min-width: 70px;
-            color: #2c3e50;
+            color: rgba(139, 69, 19, 200);
         }
         QComboBox[editable="true"] {
             padding: 1px 6px;
@@ -166,12 +170,13 @@ class PromptInputWindow(QWidget):
             border: none;
             padding: 1px 2px;
             min-width: 60px;
+            color: rgba(139, 69, 19, 200);
         }
         QComboBox:hover {
-            border: 2px solid rgba(52, 152, 219, 200);
+            border: 2px solid rgba(255, 105, 180, 200);
         }
         QComboBox:focus {
-            border: 2px solid #3498db;
+            border: 2px solid rgba(255, 105, 180, 220);
         }
         QComboBox::drop-down {
             border: none;
@@ -182,50 +187,58 @@ class PromptInputWindow(QWidget):
             border: none;
         }
         QComboBox QAbstractItemView {
-            background-color: white;
-            border: 1px solid #ddd;
-            selection-background-color: #3498db;
+            background-color: rgba(255, 250, 250, 250);
+            border: 1px solid rgba(255, 192, 203, 180);
+            selection-background-color: rgba(255, 105, 180, 150);
             selection-color: white;
             border-radius: 4px;
         }
         QLabel {
             font-size: 12px;
-            color: #2c3e50;
+            color: rgba(139, 69, 19, 200);
             font-weight: 500;
             padding-right: 4px;
             min-width: 40px;
         }
         QPushButton {
-            background-color: rgba(52, 152, 219, 220);
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba(255, 182, 193, 220),
+                stop:1 rgba(255, 160, 180, 220));
             color: white;
-            border: none;
-            border-radius: 6px;
+            border: 2px solid rgba(255, 192, 203, 150);
+            border-radius: 8px;
             padding: 8px 16px;
             font-size: 12px;
             font-weight: 500;
             min-width: 60px;
         }
         QPushButton:hover {
-            background-color: rgba(41, 128, 185, 240);
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba(255, 160, 180, 240),
+                stop:1 rgba(255, 140, 160, 240));
+            border: 2px solid rgba(255, 105, 180, 180);
         }
         QPushButton:pressed {
-            background-color: rgba(31, 108, 165, 240);
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 rgba(255, 140, 160, 240),
+                stop:1 rgba(255, 120, 140, 240));
+            border: 2px solid rgba(255, 105, 180, 200);
         }
         QCheckBox {
-            color: #666;
+            color: rgba(139, 69, 19, 180);
             font-size: 12px;
             spacing: 5px;
         }
         QCheckBox::indicator {
             width: 15px;
             height: 15px;
-            border: 1px solid #999;
-            background: rgba(255, 255, 255, 200);
+            border: 1px solid rgba(255, 192, 203, 180);
+            background: rgba(255, 250, 250, 200);
             border-radius: 3px;
         }
         QCheckBox::indicator:checked {
-            border: 1px solid #4A90E2;
-            background: rgba(74, 144, 226, 200);
+            border: 1px solid rgba(255, 105, 180, 200);
+            background: rgba(255, 182, 193, 200);
         }
         """
         
@@ -239,10 +252,10 @@ class PromptInputWindow(QWidget):
         ]
         
         try:
-            if not os.path.exists('prompts.json'):
+            if not os.path.exists('config/prompts.json'):
                 self._create_default_prompts(default_prompts)
             
-            with open('prompts.json', 'r', encoding='utf-8') as f:
+            with open('config/prompts.json', 'r', encoding='utf-8') as f:
                 prompts = json.load(f)
                 self._populate_prompts_combo(prompts)
                 
@@ -260,7 +273,7 @@ class PromptInputWindow(QWidget):
     def _create_default_prompts(self, prompts):
         """创建默认提示词文件"""
         try:
-            with open('prompts.json', 'w', encoding='utf-8') as f:
+            with open('config/prompts.json', 'w', encoding='utf-8') as f:
                 json.dump(prompts, f, ensure_ascii=False, indent=4)
         except (OSError, IOError) as e:
             print(f"创建默认提示词文件失败: {e}")

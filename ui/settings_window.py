@@ -357,13 +357,13 @@ class SettingsWindow(QMainWindow):
     def load_presets(self):
         """加载预设配置列表"""
         try:
-            with open('presets.json', 'r', encoding='utf-8') as f:
+            with open('config/presets.json', 'r', encoding='utf-8') as f:
                 presets = json.load(f)
             self.preset_combo.clear()
             self.preset_combo.addItem("选择预设...")
             self.preset_combo.addItems(presets.keys())
         except FileNotFoundError:
-            with open('presets.json', 'w', encoding='utf-8') as f:
+            with open('config/presets.json', 'w', encoding='utf-8') as f:
                 json.dump({}, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"加载预设失败: {str(e)}")
@@ -383,14 +383,14 @@ class SettingsWindow(QMainWindow):
                 }
                 
                 try:
-                    with open('presets.json', 'r', encoding='utf-8') as f:
+                    with open('config/presets.json', 'r', encoding='utf-8') as f:
                         presets = json.load(f)
                 except FileNotFoundError:
                     presets = {}
                 
                 presets[preset_name] = config
                 
-                with open('presets.json', 'w', encoding='utf-8') as f:
+                with open('config/presets.json', 'w', encoding='utf-8') as f:
                     json.dump(presets, f, indent=4, ensure_ascii=False)
                 
                 self.load_presets()
@@ -402,13 +402,13 @@ class SettingsWindow(QMainWindow):
         current_preset = self.preset_combo.currentText()
         if current_preset and current_preset != "选择预设...":
             try:
-                with open('presets.json', 'r', encoding='utf-8') as f:
+                with open('config/presets.json', 'r', encoding='utf-8') as f:
                     presets = json.load(f)
                 
                 if current_preset in presets:
                     del presets[current_preset]
                     
-                    with open('presets.json', 'w', encoding='utf-8') as f:
+                    with open('config/presets.json', 'w', encoding='utf-8') as f:
                         json.dump(presets, f, indent=4, ensure_ascii=False)
                     
                     self.load_presets()
@@ -419,7 +419,7 @@ class SettingsWindow(QMainWindow):
         """加载选中的预设配置"""
         if preset_name and preset_name != "选择预设...":
             try:
-                with open('presets.json', 'r', encoding='utf-8') as f:
+                with open('config/presets.json', 'r', encoding='utf-8') as f:
                     presets = json.load(f)
                 
                 if preset_name in presets:
