@@ -14,7 +14,7 @@ class AboutDialog(QDialog):
         
         # 创建支持透明通道的图片标签
         image_label = QLabel()
-        pixmap = QPixmap("icons/app.png")
+        pixmap = QPixmap("assets/app.png")
         # 确保支持透明通道
         if not pixmap.hasAlphaChannel():
             pixmap = pixmap.convertToFormat(QPixmap.Format.Format_ARGB32)
@@ -82,7 +82,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     def __init__(self, parent=None):
         super().__init__(parent)
         try:
-            self.setIcon(QIcon("icons/logo.ico"))
+            self.setIcon(QIcon("assets/logo.ico"))
             self.setToolTip("AI高手高手高高手 v0.3 ")
             
             # 创建右键菜单
@@ -128,6 +128,7 @@ class SystemTrayIcon(QSystemTrayIcon):
     
     def show_about_dialog(self):
         """显示关于对话框"""
-        if not hasattr(self, 'about_dialog'):
-            self.about_dialog = AboutDialog()
-        self.about_dialog.show()
+        # if not hasattr(self, 'about_dialog'):
+        #     self.about_dialog = AboutDialog()
+        # self.about_dialog.show()
+        pass

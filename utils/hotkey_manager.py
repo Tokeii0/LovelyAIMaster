@@ -19,12 +19,14 @@ HOTKEY_SHOW2 = 2
 HOTKEY_SELECTION = 3
 HOTKEY_SCREENSHOT = 4
 HOTKEY_CHAT = 5
+HOTKEY_COMMAND = 6
 
 class GlobalHotkey(QObject):
     triggered = Signal()
     selection_triggered = Signal()
     screenshot_triggered = Signal()
     chat_triggered = Signal()
+    command_triggered = Signal()
     hotkey_failed = Signal(str)
     selection_to_input_triggered = Signal()
     
@@ -37,6 +39,7 @@ class GlobalHotkey(QObject):
         self.selection_hotkey = ('Alt', '3')
         self.screenshot_hotkey = ('Alt', '4')
         self.chat_hotkey = ('Control', '4')
+        self.command_hotkey = ('Alt', '5')
         
         self.registered_hotkeys = {}  # 存储已注册的热键ID
         
@@ -52,20 +55,40 @@ class GlobalHotkey(QObject):
     def _create_hotkey_window(self):
         """创建隐藏窗口用于接收热键消息"""
         try:
+            # 初始化hwnd属性为None，确保即使创建失败也有这个属性
+            self.hwnd = None
+            
+            # 设置窗口类
             wc = win32gui.WNDCLASS()
             wc.lpfnWndProc = self._window_proc
             wc.lpszClassName = "GlobalHotkeyWindow"
             
-            win32gui.RegisterClass(wc)
+            # 尝试注册窗口类，如果已存在则忽略错误
+            try:
+                win32gui.RegisterClass(wc)
+            except win32gui.error as e:
+                # 类已存在错误 (1410)，可以忽略
+                if e.winerror != 1410:  # 如果不是"类已存在"错误，则重新抛出
+                    raise
+                print("窗口类已存在，继续使用...")
+            
+            # 创建窗口
             self.hwnd = win32gui.CreateWindow(
                 wc.lpszClassName,
                 "GlobalHotkeyWindow",
                 0, 0, 0, 0, 0,
                 0, 0, 0, None
             )
+            
+            if not self.hwnd:
+                raise Exception("创建窗口失败，返回的hwnd为空")
+                
         except Exception as e:
             print(f"创建热键窗口失败: {str(e)}")
             traceback.print_exc()
+            # 确保hwnd至少有一个有效值，防止后续注册热键时出错
+            if not self.hwnd:
+                self.hwnd = 0
 
     def _window_proc(self, hwnd, msg, wparam, lparam):
         """窗口消息处理"""
@@ -83,6 +106,8 @@ class GlobalHotkey(QObject):
                     self.screenshot_triggered.emit()
                 elif wparam == HOTKEY_CHAT:
                     self.chat_triggered.emit()
+                elif wparam == HOTKEY_COMMAND:
+                    self.command_triggered.emit()
             except Exception as e:
                 print(f"处理热键消息失败: {str(e)}")
                 traceback.print_exc()
@@ -91,6 +116,15 @@ class GlobalHotkey(QObject):
     def _register_hotkeys(self):
         """注册热键"""
         try:
+            # 检查窗口句柄是否有效
+            if not hasattr(self, 'hwnd') or self.hwnd is None:
+                print("窗口句柄无效，尝试重新创建窗口...")
+                self._create_hotkey_window()
+                
+                # 再次检查窗口是否创建成功
+                if not hasattr(self, 'hwnd') or self.hwnd is None:
+                    raise Exception("无法创建有效的窗口句柄，无法注册热键")
+            
             # 先取消注册所有热键
             self._unregister_hotkeys()
             
@@ -101,6 +135,7 @@ class GlobalHotkey(QObject):
                 (HOTKEY_SELECTION, self.selection_hotkey),
                 (HOTKEY_SCREENSHOT, self.screenshot_hotkey),
                 (HOTKEY_CHAT, self.chat_hotkey),
+                (HOTKEY_COMMAND, self.command_hotkey)
             ]
             
             print("开始注册热键...")  # 调试输出
@@ -121,10 +156,12 @@ class GlobalHotkey(QObject):
                     else:
                         error = ctypes.get_last_error()
                         print(f"注册热键失败: {modifier}+{key}, 错误码: {error}")
+                        self.hotkey_failed.emit(f"注册热键失败: {modifier}+{key}, 错误码: {error}")
                         
                 except Exception as e:
                     print(f"注册热键 {modifier}+{key} 失败: {str(e)}")
                     traceback.print_exc()
+                    self.hotkey_failed.emit(f"注册热键 {modifier}+{key} 失败: {str(e)}")
                     continue
                     
         except Exception as e:
@@ -170,11 +207,17 @@ class GlobalHotkey(QObject):
     def _unregister_hotkeys(self):
         """取消注册的热键"""
         try:
+            # 检查窗口句柄是否有效
+            if not hasattr(self, 'hwnd') or self.hwnd is None:
+                print("窗口句柄无效，无法取消注册热键")
+                self.registered_hotkeys.clear()
+                return
+                
             for hotkey_id in list(self.registered_hotkeys.keys()):
                 try:
                     ctypes.windll.user32.UnregisterHotKey(self.hwnd, hotkey_id)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"取消注册热键ID={hotkey_id}失败: {str(e)}")
             self.registered_hotkeys.clear()
         except Exception as e:
             print(f"取消注册热键失败: {str(e)}")
@@ -184,8 +227,12 @@ class GlobalHotkey(QObject):
         """停止热键监听"""
         try:
             self._unregister_hotkeys()
-            if hasattr(self, 'hwnd'):
-                win32gui.DestroyWindow(self.hwnd)
+            if hasattr(self, 'hwnd') and self.hwnd:
+                try:
+                    win32gui.DestroyWindow(self.hwnd)
+                except Exception as e:
+                    print(f"销毁窗口失败: {str(e)}")
+                self.hwnd = None
         except Exception as e:
             print(f"停止热键监听失败: {str(e)}")
             traceback.print_exc()
@@ -193,18 +240,25 @@ class GlobalHotkey(QObject):
     def restart(self):
         """重启热键监听"""
         try:
+            print("正在重启热键监听...")
             self.stop()
-            time.sleep(0.2)
+            time.sleep(0.2)  # 短暂延迟确保资源释放
             self._create_hotkey_window()
-            self._register_hotkeys()
+            if hasattr(self, 'hwnd') and self.hwnd:
+                print(f"成功创建窗口，句柄: {self.hwnd}")
+                self._register_hotkeys()
+            else:
+                print("窗口创建失败，无法注册热键")
+                self.hotkey_failed.emit("窗口创建失败，无法注册热键")
         except Exception as e:
             print(f"重启热键监听失败: {str(e)}")
             traceback.print_exc()
+            self.hotkey_failed.emit(f"重启热键监听失败: {str(e)}")
 
     def load_hotkey_config(self):
         """从配置文件加载快捷键设置"""
         try:
-            with open('config.json', 'r', encoding='utf-8') as f:
+            with open('config/config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 # 转换配置中的快捷键为元组格式
                 self.hotkey1 = self._parse_shortcut(config.get('hotkey1', 'Alt+1'))
@@ -212,6 +266,7 @@ class GlobalHotkey(QObject):
                 self.selection_hotkey = self._parse_shortcut(config.get('selection_hotkey', 'Alt+3'))
                 self.screenshot_hotkey = self._parse_shortcut(config.get('screenshot_hotkey', 'Alt+4'))
                 self.chat_hotkey = self._parse_shortcut(config.get('chat_hotkey', 'Control+4'))
+                self.command_hotkey = self._parse_shortcut(config.get('command_hotkey', 'Alt+5'))
         except Exception as e:
             print(f"加载热键配置失败: {str(e)}")
             traceback.print_exc()

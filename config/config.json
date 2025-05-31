@@ -1,0 +1,20 @@
+{
+    "api_key": "6e33e2f8-4c80-411e-b11c-8db5479c040d",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "model": "ep-20250326203444-qbnll",
+    "api_type": "OpenAI",
+    "proxy_enabled": false,
+    "proxy": "127.0.0.1:1090",
+    "image_api_key": "sk-SAA3Do19tjiEuNAJmY5xCNRFnEApcr48Ic8OokDALI7PEGE0",
+    "image_base_url": "https://api.deepbricks.ai/v1",
+    "image_model": "gpt-4o-2024-11-20",
+    "image_api_type": "openai代理",
+    "image_proxy_enabled": false,
+    "image_proxy": "127.0.0.1:1090",
+    "hotkey1": "Alt+1",
+    "hotkey2": "Alt+Q",
+    "selection_hotkey": "Alt+2",
+    "screenshot_hotkey": "Alt+3",
+    "chat_hotkey": "Alt+4",
+    "es_path": "C:\\Program Files\\Everything\\es.exe"
+}

@@ -249,7 +249,7 @@ class SettingsWindow(QMainWindow):
     
     def load_settings(self):
         try:
-            with open('config.json', 'r', encoding='utf-8') as f:
+            with open('config/config.json', 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 # 文本AI设置
                 self.api_key_input.setText(config.get('api_key', ''))
@@ -307,7 +307,7 @@ class SettingsWindow(QMainWindow):
     
     def save_settings(self):
         try:
-            with open('config.json', 'r', encoding='utf-8') as f:
+            with open('config/config.json', 'r', encoding='utf-8') as f:
                 old_config = json.load(f)
 
             config = {
@@ -345,7 +345,7 @@ class SettingsWindow(QMainWindow):
                 config['chat_hotkey'].lower() != old_config.get('chat_hotkey', '').lower()
             )
 
-            with open('config.json', 'w', encoding='utf-8') as f:
+            with open('config/config.json', 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=4, ensure_ascii=False)
 
             self.settings_saved.emit({"config": config, "hotkeys_changed": hotkeys_changed})

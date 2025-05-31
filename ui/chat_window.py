@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTextEdit, 
-                               QPushButton, QHBoxLayout, QCheckBox, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QSizeGrip)
+                               QPushButton, QHBoxLayout, QCheckBox, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QSizeGrip, QComboBox)
 from PySide6.QtCore import Qt, QEvent,QTimer, QSize
-from PySide6.QtGui import QTextOption, QIcon
+from PySide6.QtGui import QTextOption, QIcon, QDoubleValidator, QIntValidator
 
 import asyncio
 
@@ -145,7 +145,7 @@ class ChatWindow(QMainWindow):
         self.setWindowIcon(QIcon(r"icons\logo.ico"))
         
         # 从 styles.py 导入样式
-        from styles import CHAT_WINDOW_STYLE
+        from .styles import CHAT_WINDOW_STYLE
         self.setStyleSheet(CHAT_WINDOW_STYLE)
         
         layout = QVBoxLayout(central_widget)
@@ -197,29 +197,54 @@ class ChatWindow(QMainWindow):
 
         # 创建底部控制栏
         bottom_layout = QHBoxLayout()
-        bottom_layout.setContentsMargins(10, 5, 10, 5)  # 添加边距
-        bottom_layout.setSpacing(10)  # 增加间距
-
-        # 添加过滤 markdown 的复选框
-        self.filter_markdown = QCheckBox("过滤 Markdown")  # 缩短文本
-        self.filter_markdown.setFixedHeight(25)  # 设置固定高度
+        bottom_layout.setContentsMargins(10, 5, 10, 5)
+        bottom_layout.setSpacing(10)
+        
+        # 添加温度设置
+        temp_layout = QHBoxLayout()
+        temp_label = QLabel("温度:")
+        self.temperature_combo = QComboBox()
+        self.temperature_combo.setEditable(True)
+        self.temperature_combo.addItems(['0.0', '0.3', '0.5', '0.7', '0.9', '1.0'])
+        self.temperature_combo.setCurrentText('0.7')
+        self.temperature_combo.setValidator(QDoubleValidator(0.0, 2.0, 2))
+        self.temperature_combo.setMinimumWidth(60)
+        self.temperature_combo.setFixedWidth(60)
+        temp_layout.addWidget(temp_label)
+        temp_layout.addWidget(self.temperature_combo)
+        bottom_layout.addLayout(temp_layout)
+        
+        # 添加最大令牌数设置
+        tokens_layout = QHBoxLayout()
+        tokens_label = QLabel("最大令牌:")
+        self.max_tokens_combo = QComboBox()
+        self.max_tokens_combo.setEditable(True)
+        self.max_tokens_combo.addItems(['1000', '2000', '4000', '8000', '16000'])
+        self.max_tokens_combo.setCurrentText('2000')
+        self.max_tokens_combo.setValidator(QIntValidator(1, 32000))
+        self.max_tokens_combo.setMinimumWidth(70)
+        self.max_tokens_combo.setFixedWidth(70)
+        tokens_layout.addWidget(tokens_label)
+        tokens_layout.addWidget(self.max_tokens_combo)
+        bottom_layout.addLayout(tokens_layout)
+        
+        # 添加现有的复选框和按钮
+        self.filter_markdown = QCheckBox("过滤 Markdown")
         bottom_layout.addWidget(self.filter_markdown)
-
-        # 添加流模式的复选框
-        self.stream_mode = QCheckBox("流模式")  # 缩短文本
+        
+        self.stream_mode = QCheckBox("流模式")
         self.stream_mode.setChecked(True)
-        self.stream_mode.setFixedHeight(25)  # 设置固定高度
         bottom_layout.addWidget(self.stream_mode)
-
+        
         # 添加清空按钮
-        clear_button = QPushButton("清空")  # 缩短文本
-        clear_button.setFixedHeight(25)  # 设置固定高度
+        clear_button = QPushButton("清空")
+        clear_button.setFixedHeight(25)
         clear_button.clicked.connect(self.clear_chat)
         bottom_layout.addWidget(clear_button)
 
         # 添加发送按钮
         self.send_button = QPushButton("发送")
-        self.send_button.setFixedHeight(25)  # 设置固定高度
+        self.send_button.setFixedHeight(25)
         self.send_button.clicked.connect(
             lambda: asyncio.get_event_loop().create_task(self.send_message())
         )
@@ -228,7 +253,7 @@ class ChatWindow(QMainWindow):
         # 设置底部布局的固定高度
         bottom_widget = QWidget()
         bottom_widget.setLayout(bottom_layout)
-        bottom_widget.setFixedHeight(35)  # 设置固定高度
+        bottom_widget.setFixedHeight(35)
         
         layout.addWidget(bottom_widget)
 
@@ -275,7 +300,7 @@ class ChatWindow(QMainWindow):
         message_item = MessageItem(role, content)
         list_item = QListWidgetItem()
         
-        # 获取消息项的实际大小
+        # 获取消息项的实际���小
         size = message_item.sizeHint()
         # 确保高度足够
         size.setHeight(message_item.height()+15)  # 添加一点间距
@@ -343,6 +368,20 @@ class ChatWindow(QMainWindow):
         self.append_message("user", full_input)
 
         try:
+            # 获取并验证温度值
+            try:
+                temperature = float(self.temperature_combo.currentText())
+                temperature = max(0.0, min(2.0, temperature))
+            except ValueError:
+                temperature = 0.7
+            
+            # 获取并验证最大令牌数
+            try:
+                max_tokens = int(self.max_tokens_combo.currentText())
+                max_tokens = max(1, min(32000, max_tokens))
+            except ValueError:
+                max_tokens = 2000
+            
             messages = [{"role": "system", "content": "请直接回答问题，不要使用 markdown 格式。"}]
             messages.extend(self.messages)
 
@@ -351,12 +390,18 @@ class ChatWindow(QMainWindow):
                 message_widget = None
                 first_chunk = True
                 
-                async for text in self.ai_client.get_response_stream(full_input, stream=True, messages=messages):
+                async for text in self.ai_client.get_response_stream(
+                    full_input, 
+                    stream=True, 
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                ):
                     if self.should_stop:
                         break
 
                     if self.filter_markdown.isChecked():
-                        from utils import remove_markdown
+                        from utils.utils import remove_markdown
                         text = remove_markdown(text)
 
                     response_text += text
@@ -408,9 +453,14 @@ class ChatWindow(QMainWindow):
                     self.messages.append({"role": "assistant", "content": response_text})
 
             else:
-                response = await self.ai_client.get_response(full_input, messages=messages)
+                response = await self.ai_client.get_response(
+                    full_input, 
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
                 if self.filter_markdown.isChecked():
-                    from utils import remove_markdown
+                    from utils.utils import remove_markdown
                     response = remove_markdown(response)
                 self.append_message("assistant", response)
                 self.messages.append({"role": "assistant", "content": response})

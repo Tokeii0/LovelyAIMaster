@@ -15,8 +15,8 @@ class ConfigManager:
     
     def load_config(self):
         try:
-            if os.path.exists('config.json'):
-                with open('config.json', 'r', encoding='utf-8') as f:
+            if os.path.exists('config/config.json'):
+                with open('config/config.json', 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     if 'proxy_enabled' in config:
                         config['proxy_enabled'] = bool(config['proxy_enabled'])
@@ -27,7 +27,7 @@ class ConfigManager:
             
     def create_default_config(self):
         try:
-            with open('config.json', 'w', encoding='utf-8') as f:
+            with open('config/config.json', 'w', encoding='utf-8') as f:
                 json.dump(self.default_config, f, indent=4, ensure_ascii=False)
             return self.default_config.copy()
         except Exception:
